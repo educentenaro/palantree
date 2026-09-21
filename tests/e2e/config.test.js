@@ -58,7 +58,7 @@ test("invalid arguments and configuration exit 2 without report", async (t) => {
     assert.match(result.stderr, /palantree:/);
     assert.equal(result.stdout, "");
   }
-  for (const config of [null, [], { typo: true }, { src: 1 }, { exclude: ["**/*.tsx"] }, { failOnWarnings: "yes" }]) {
+  for (const config of [null, [], { typo: true }, { src: 1 }, { exclude: ["**/*.tsx"] }, { failOnWarnings: "yes" }, { preset: "react" }]) {
     await f.config(config);
     assert.equal(f.run("scan").status, 2, JSON.stringify(config));
   }

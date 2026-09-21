@@ -1,7 +1,7 @@
 {
   "name": "palantree",
-  "version": "0.1.1",
-  "description": "Design token linting for React, JavaScript, TypeScript and CSS",
+  "version": "0.3.0",
+  "description": "shadcn/ui design token linting for React, JavaScript, TypeScript and CSS",
   "license": "UNLICENSED",
   "keywords": ["react", "design-system", "design-tokens", "lint", "figma"],
   "publishConfig": { "access": "public" },
@@ -9,7 +9,7 @@
   "files": ["dist"],
   "type": "module",
   "bin": {
-    "palantree": "./dist/cli.js"
+    "palantree": "dist/cli.js"
   },
   "scripts": {
     "start": "node ./dist/cli.js",

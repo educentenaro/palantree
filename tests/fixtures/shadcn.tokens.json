@@ -1,0 +1,36 @@
+{
+  "Tokens": {
+    "Default": {
+      "spacing": {
+        "4": { "$type": "number", "$value": 16 }
+      },
+      "radius": {
+        "rounded-lg": { "$type": "number", "$value": 8 }
+      },
+      "text": {
+        "text-primary": { "$type": "color", "$value": "#FB640F" },
+        "text-primary-foreground": { "$type": "color", "$value": "#FFFFFF" }
+      },
+      "background": {
+        "bg-primary": { "$type": "color", "$value": "#FB640F" }
+      },
+      "border": {
+        "border-primary": { "$type": "color", "$value": "#FB640F" }
+      }
+    }
+  },
+  "Primitives": {
+    "Light": {
+      "color": {
+        "primary": { "100": { "$type": "color", "$value": "#FB640F" } },
+        "background": { "100": { "$type": "color", "$value": "#FFFFFF" } }
+      }
+    },
+    "Dark": {
+      "color": {
+        "primary": { "100": { "$type": "color", "$value": "#192A56" } },
+        "background": { "100": { "$type": "color", "$value": "#0A0A0A" } }
+      }
+    }
+  }
+}

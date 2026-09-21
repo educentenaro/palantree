@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import { readFile } from "node:fs/promises";
+import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
 import { loadConfig, type ProjectConfig } from "./config.js";
-import { initProject } from "./init.js";
+import { acceptsShadcnAnswer, ensureInitProject, initProject, isShadcnConfigured } from "./init.js";
 import { scan } from "./scan.js";
 import { formatReport } from "./reporter.js";
 
@@ -16,6 +17,7 @@ Init options:
   --figma, -f <path>       Tokens JSON file or directory (default: tokens.json)
   --src, -s <path>         Source directory or file (default: src)
   --force                  Replace conflicting config and lint:design script
+  --yes, -y                Confirm this is a shadcn/ui project without prompting
 
 Scan options:
   --figma, -f <path>       Tokens JSON file or directory (default: tokens.json)
@@ -40,6 +42,7 @@ async function main() {
         format: { type: "string" },
         "fail-on-warnings": { type: "boolean" },
         force: { type: "boolean" },
+        yes: { type: "boolean", short: "y" },
         help: { type: "boolean", short: "h" },
         version: { type: "boolean", short: "v" },
       },
@@ -61,9 +64,22 @@ async function main() {
 
     if (positionals[0] === "init") {
       if (values.config !== undefined || values.format !== undefined || values["fail-on-warnings"] !== undefined) {
-        throw new Error("init only accepts --figma, --src and --force");
+        throw new Error("init only accepts --figma, --src, --force and --yes");
       }
-      const result = await initProject({ figma: values.figma, src: values.src, force: values.force });
+      await ensureInitProject();
+      const configured = await isShadcnConfigured();
+      let confirmed = configured || values.yes === true;
+      if (!confirmed) {
+        if (!process.stdin.isTTY || !process.stdout.isTTY) {
+          throw new Error("Cannot confirm shadcn/ui in a non-interactive terminal; rerun palantree init --yes");
+        }
+        const prompt = createInterface({ input: process.stdin, output: process.stdout });
+        const answer = (await prompt.question("Este projeto utiliza shadcn/ui? (Y/n) ")).trim().toLowerCase();
+        prompt.close();
+        confirmed = acceptsShadcnAnswer(answer);
+        if (!confirmed) throw new Error("Palantree is exclusive to shadcn/ui projects; initialization cancelled");
+      }
+      const result = await initProject({ figma: values.figma, src: values.src, force: values.force, shadcnConfirmed: confirmed });
       console.log("Palantree initialized.");
       console.log("Created design-lint.config.json and added the lint:design script.");
       for (const warning of result.warnings) console.warn(`Warning: ${warning}`);
@@ -71,7 +87,7 @@ async function main() {
       return;
     }
 
-    if (values.force !== undefined) throw new Error("scan does not accept --force");
+    if (values.force !== undefined || values.yes !== undefined) throw new Error("scan does not accept --force or --yes");
     if (values.format !== undefined && values.format !== "text" && values.format !== "json") throw new Error("--format must be text or json");
     const overrides: ProjectConfig = {};
     if (values.figma !== undefined) overrides.figma = values.figma;

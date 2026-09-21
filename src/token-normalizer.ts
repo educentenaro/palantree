@@ -189,6 +189,11 @@ export function normalizeColorValue(input: unknown): string | null {
       return normalizeHslValue(hslMatch[1]);
     }
 
+    const oklchMatch = trimmed.match(/^oklch\((.+)\)$/i);
+    if (oklchMatch) {
+      return normalizeOklchValue(oklchMatch[1]);
+    }
+
     return null;
   }
 
@@ -221,10 +226,12 @@ export function normalizeNumericValue(input: unknown): string | null {
 
   if (typeof input === "string") {
     const trimmed = input.trim().toLowerCase();
-    const match = trimmed.match(/^(-?\d+(?:\.\d+)?)(?:px|rem|em)?$/);
+    const match = trimmed.match(/^(-?(?:\d+(?:\.\d+)?|\.\d+))(px|rem|em|%|vh|vw)?$/);
 
     if (match) {
-      return formatNumber(Number(match[1]));
+      // Unitless Figma dimensions are pixels. Relative units need runtime
+      // context and must never match a pixel token just by their number.
+      return formatNumber(Number(match[1])) + (match[2] && match[2] !== "px" ? match[2] : "");
     }
   }
 
@@ -338,7 +345,7 @@ function normalizeHexValue(hex: string, alpha = 1): string | null {
 }
 
 function normalizeRgbValue(input: string): string | null {
-  const parts = input.split(/\s*,\s*/).map((part) => part.trim());
+  const parts = input.trim().split(/\s*[,/]\s*|\s+/);
 
   if (parts.length < 3) {
     return null;
@@ -347,7 +354,7 @@ function normalizeRgbValue(input: string): string | null {
   const red = parseColorChannel(parts[0]);
   const green = parseColorChannel(parts[1]);
   const blue = parseColorChannel(parts[2]);
-  const alpha = parts[3] !== undefined ? Number(parts[3]) : 1;
+  const alpha = parts[3] !== undefined ? (parts[3].endsWith("%") ? Number(parts[3].slice(0, -1)) / 100 : Number(parts[3])) : 1;
 
   if ([red, green, blue].some((component) => component === null)) {
     return null;
@@ -357,7 +364,7 @@ function normalizeRgbValue(input: string): string | null {
 }
 
 function normalizeHslValue(input: string): string | null {
-  const parts = input.split(/\s*,\s*/).map((part) => part.trim());
+  const parts = input.trim().split(/\s*[,/]\s*|\s+/);
 
   if (parts.length < 3) {
     return null;
@@ -366,7 +373,7 @@ function normalizeHslValue(input: string): string | null {
   const hue = Number(parts[0].replace(/deg$/i, ""));
   const saturation = Number(parts[1].replace(/%$/, ""));
   const lightness = Number(parts[2].replace(/%$/, ""));
-  const alpha = parts[3] !== undefined ? Number(parts[3]) : 1;
+  const alpha = parts[3] !== undefined ? (parts[3].endsWith("%") ? Number(parts[3].slice(0, -1)) / 100 : Number(parts[3])) : 1;
 
   if (![hue, saturation, lightness].every(Number.isFinite)) {
     return null;
@@ -384,6 +391,32 @@ function parseColorChannel(value: string): number | null {
 
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
+}
+
+function normalizeOklchValue(input: string): string | null {
+  const [channels, alphaText] = input.trim().split(/\s*\/\s*/);
+  const parts = channels.trim().split(/\s+/);
+  if (parts.length !== 3) return null;
+  const lightness = parts[0].endsWith("%") ? Number(parts[0].slice(0, -1)) / 100 : Number(parts[0]);
+  const chroma = Number(parts[1]);
+  const hue = Number(parts[2].replace(/deg$/i, ""));
+  const alpha = alphaText === undefined ? 1 : alphaText.endsWith("%") ? Number(alphaText.slice(0, -1)) / 100 : Number(alphaText);
+  if (![lightness, chroma, hue, alpha].every(Number.isFinite)) return null;
+
+  const radians = hue * Math.PI / 180;
+  const a = chroma * Math.cos(radians);
+  const b = chroma * Math.sin(radians);
+  const lRoot = lightness + 0.3963377774 * a + 0.2158037573 * b;
+  const mRoot = lightness - 0.1055613458 * a - 0.0638541728 * b;
+  const sRoot = lightness - 0.0894841775 * a - 1.291485548 * b;
+  const l = lRoot ** 3, m = mRoot ** 3, s = sRoot ** 3;
+  const linear = [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ];
+  const rgb = linear.map(channel => 255 * (channel <= 0.0031308 ? 12.92 * channel : 1.055 * channel ** (1 / 2.4) - 0.055));
+  return rgbaToHex(rgb[0], rgb[1], rgb[2], alpha);
 }
 
 function rgbaToHex(red: number, green: number, blue: number, alpha = 1): string {

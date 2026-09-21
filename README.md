@@ -1,6 +1,6 @@
 # Palantree
 
-CLI para encontrar valores de estilo que deveriam usar Design Tokens em projetos React. A análise usa ASTs de JavaScript, TypeScript, JSX e CSS, sem executar nem compilar o projeto analisado.
+CLI para encontrar violações do design system em projetos React baseados em shadcn/ui. O Palantree combina uma baseline embutida de shadcn/Tailwind com os tokens semânticos exportados pelo Figma, sem executar nem compilar o projeto analisado.
 
 Requer Node.js 22 ou superior. React, TypeScript e Bun não precisam estar instalados globalmente.
 
@@ -12,6 +12,8 @@ Depois da publicação no npm, instale no projeto que será analisado:
 npm install --save-dev palantree
 npx palantree init
 ```
+
+Na primeira inicialização, confirme que o projeto utiliza shadcn/ui. Em terminais não interativos, use `npx palantree init --yes`. Esta versão do Palantree é exclusiva para projetos shadcn/ui.
 
 O `init` cria `design-lint.config.json` e adiciona este script ao `package.json`:
 
@@ -51,6 +53,7 @@ O arquivo gerado pelo `init` tem este formato:
 
 ```json
 {
+  "preset": "shadcn",
   "figma": "./tokens.json",
   "src": "./src",
   "exclude": [],
@@ -71,19 +74,28 @@ npx palantree scan --fail-on-warnings
 npx palantree --help
 ```
 
-Sem configuração, `scan` procura `tokens.json` e `src` no diretório atual. A descoberta de `*.tokens.json` acontece durante `palantree init`; o `scan` usa exatamente o caminho salvo. O arquivo de configuração é procurado apenas no diretório atual, sem busca nas pastas pais.
+Sem configuração, `scan` assume o preset `shadcn` e procura `tokens.json` e `src` no diretório atual. Configurações criadas por versões anteriores, sem `preset`, também assumem shadcn. A descoberta de `*.tokens.json` acontece durante `palantree init`; o `scan` usa exatamente o caminho salvo. O arquivo de configuração é procurado apenas no diretório atual, sem busca nas pastas pais.
 
 ## Tokens e resultado
 
-Exemplo mínimo de `tokens.json`:
+O formato recomendado separa tokens semânticos e primitivas Light/Dark:
 
 ```json
 {
-  "spacing": {
-    "md": { "$type": "dimension", "$value": "12px" }
+  "Tokens": {
+    "Default": {
+      "background": {
+        "bg-primary": { "$type": "color", "$value": "#FB640F" }
+      }
+    }
   },
-  "color": {
-    "brand": { "$type": "color", "$value": "#13544A" }
+  "Primitives": {
+    "Light": {
+      "color": { "primary": { "100": { "$type": "color", "$value": "#FB640F" } } }
+    },
+    "Dark": {
+      "color": { "primary": { "100": { "$type": "color", "$value": "#FB640F" } } }
+    }
   }
 }
 ```
@@ -91,9 +103,7 @@ Exemplo mínimo de `tokens.json`:
 Ao analisar:
 
 ```tsx
-export const Button = () => (
-  <button style={{ color: "#13544A", padding: "12px" }}>Salvar</button>
-);
+export const Button = () => <button className="bg-[#FB640F]">Salvar</button>;
 ```
 
 o Palantree informa arquivo, linha, coluna, severidade e a sugestão de token. `--format json` produz um objeto com `files`, `results`, `summary` e `passed`.
@@ -106,7 +116,21 @@ o Palantree informa arquivo, linha, coluna, severidade e a sugestão de token. `
 
 São analisados `.tsx`, `.ts`, `.jsx`, `.js` e `.css`. Diretórios ocultos, `node_modules`, `dist`, `build`, `coverage` e `out` são ignorados. Links simbólicos encontrados na descoberta recursiva não são seguidos.
 
-A análise cobre declarações CSS, estilos JSX e objetos CSS-in-JS. Ela não resolve imports ou expressões dinâmicas e ainda não verifica classes Tailwind/shadcn em `className` nem CSS dentro de template literals. Os tokens suportados usam folhas `$type`/`$value`.
+A análise cobre declarações CSS, estilos JSX, objetos CSS-in-JS e classes Tailwind/shadcn em `className` ou `class`. Os tokens suportados usam folhas `$type`/`$value`.
+
+Classes são extraídas de strings, trechos completos de templates, ternários, expressões lógicas e composições com `cn`, `clsx`, `classnames` e `cva` (incluindo variantes). A ferramenta não executa JavaScript, não resolve imports/variáveis e não interpreta classes montadas por interpolação, como `bg-${color}`, nem CSS dentro de template literals.
+
+Valores arbitrários de cores, espaçamento/dimensões, raio, tamanho de fonte e sombras geram violações. As sugestões consideram o contexto: `bg-[#FB640F]` sugere `bg-primary`, enquanto `border-[#FB640F]` sugere `border-primary`, quando esses tokens têm o mesmo valor. Variantes como `hover:` e `md:` são preservadas. Opacidade numérica (`/90`) é comparada incluindo o alpha final; valores sem correspondência exata permanecem sem sugestão. A análise não implementa toda a gramática ou configuração do Tailwind.
+
+A baseline aceita as classes nativas de layout, espaçamento, dimensões, tipografia, raio, sombra e estrutura do Tailwind/shadcn, como `px-2.5`, `text-sm`, `max-w-7xl`, `rounded-lg`, `shadow-sm` e `border-b`. Elas não precisam existir no JSON do Figma.
+
+Cores seguem uma regra mais estrita. Os nomes semânticos oficiais do shadcn, como `bg-background`, `text-card-foreground`, `border-border` e `ring-ring`, são aceitos, assim como nomes personalizados em `Tokens.Default`. Cores diretas da paleta Tailwind, como `text-white`, `bg-black` e `border-white/10`, continuam sendo violações e recebem uma sugestão semântica quando o JSON contém uma correspondência exata.
+
+Somente tokens de `Tokens.Default` são sugeridos no código. `Primitives.Light` e `Primitives.Dark` servem para conferir os valores de `:root` e `.dark`. Variáveis nativas de fonte, espaçamento, raio e sombra são reconhecidas como infraestrutura do tema. Variáveis de cor presentes nas primitivas são comparadas inclusive quando o CSS usa `oklch()`; variáveis oficiais ausentes do JSON usam a baseline sem gerar erro.
+
+No CSS, `border: 2px solid #FB640F` sugere `border: 2px solid var(--tokens-default-border-border-primary)` e identifica o token `border-primary`. Os nomes de variáveis seguem o caminho completo do token e precisam estar definidos pelo projeto; o Palantree não gera nem injeta CSS. Sugestões Tailwind só são exibidas quando existe um token semântico compatível com o contexto. As sugestões não são aplicadas automaticamente.
+
+Declarações compostas e gradientes são inspecionados por componente. Valores dentro de `var(...)` são ignorados; valores hardcoded ao lado continuam sendo analisados. Unidades relativas como `rem` não são equiparadas a `px` sem contexto de execução.
 
 ## Desenvolvimento
 
@@ -139,8 +163,8 @@ npm pack
 O artefato local usa o formato `palantree-<versão>.tgz`. Ele pode ser validado antes da publicação com:
 
 ```sh
-npm install --save-dev ./palantree-0.1.1.tgz
-npx palantree init
+npm install --save-dev ./palantree-0.3.0.tgz
+npx palantree init --yes
 npx palantree scan
 ```
 
@@ -148,7 +172,7 @@ Para publicar a versão validada:
 
 ```sh
 npm login
-npm publish ./palantree-0.1.1.tgz --access public
+npm publish ./palantree-0.3.0.tgz --access public
 ```
 
 O pacote está marcado como `UNLICENSED`: a publicação permite o download pelo npm, mas não concede uma licença aberta de redistribuição ou modificação.

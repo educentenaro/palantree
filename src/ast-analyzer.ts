@@ -2,11 +2,13 @@ import { extname } from "node:path";
 import { parse } from "@babel/parser";
 import traverseModule from "@babel/traverse";
 import * as csstree from "css-tree";
+import { CLASS_CALLS, inspectClasses } from "./tailwind-analyzer.js";
 import type { AnalysisFinding, ConfidenceLevel, SourceFileKind, TokenCategory } from "./types.js";
 import {
-  buildJsReference,
+  normalizeColorValue,
   normalizeValueForCategory,
 } from "./token-normalizer.js";
+import { SHADCN_COLOR_NAMES, themePrimitiveName } from "./shadcn-baseline.js";
 
 const STYLE_ATTRIBUTE_NAMES = new Set(["style", "sx", "css"]);
 // Babel traverse is CommonJS; native Node ESM exposes its exports object.
@@ -45,6 +47,7 @@ function analyzeScriptSource(filePath: string, sourceText: string): AnalysisFind
   const sourceKind = getSourceKind(filePath);
   const findings: AnalysisFinding[] = [];
   const visitedObjectExpressions = new Set<string>();
+  const visitedClasses = new Set<number>();
   const ast = parse(sourceText, {
     sourceType: "unambiguous",
     errorRecovery: false,
@@ -54,6 +57,10 @@ function analyzeScriptSource(filePath: string, sourceText: string): AnalysisFind
   traverse(ast as never, {
     JSXAttribute(path: any) {
       const attributeName = getJSXAttributeName(path.node.name);
+      if (attributeName === "className" || attributeName === "class") {
+        inspectClasses(path.node.value, filePath, sourceText, sourceKind, findings, visitedClasses);
+        return;
+      }
       if (!attributeName || !STYLE_ATTRIBUTE_NAMES.has(attributeName)) {
         return;
       }
@@ -78,6 +85,10 @@ function analyzeScriptSource(filePath: string, sourceText: string): AnalysisFind
     },
     CallExpression(path: any) {
       const calleeName = getCalleeName(path.node.callee);
+      if (calleeName && CLASS_CALLS.has(calleeName)) {
+        inspectClasses(path.node, filePath, sourceText, sourceKind, findings, visitedClasses);
+        return;
+      }
       if (!calleeName || !STYLE_FACTORY_CALLS.has(calleeName)) {
         return;
       }
@@ -105,7 +116,7 @@ function analyzeCssSource(filePath: string, sourceText: string): AnalysisFinding
     onParseError(error: Error) { throw error; },
   });
 
-  csstree.walk(ast, (node: any) => {
+  csstree.walk(ast, function(this: any, node: any) {
     if (node.type !== "Declaration") {
       return;
     }
@@ -113,40 +124,71 @@ function analyzeCssSource(filePath: string, sourceText: string): AnalysisFinding
     const propertyName = String(node.property);
     const rawValue = csstree.generate(node.value).trim();
 
-    if (!rawValue || isSafeLiteral(rawValue) || /var\(/i.test(rawValue)) {
+    if (propertyName.startsWith("--")) {
+      const themeName = themePrimitiveName(propertyName);
+      const selector = this.rule?.prelude ? csstree.generate(this.rule.prelude) : "";
+      const themeMode = /\.dark\b/.test(selector) ? "Dark" : /:root\b/.test(selector) ? "Light" : undefined;
+      const normalizedValue = normalizeColorValue(rawValue);
+      if (themeMode && SHADCN_COLOR_NAMES.has(propertyName.slice(2)) && normalizedValue) {
+        const loc = node.value.loc?.start ?? node.loc?.start;
+        if (loc) findings.push(createFinding({
+          filePath, sourceKind, origin: "css", propertyName, rawValue, normalizedValue,
+          category: "colors", kind: "theme", confidence: "high", themeMode,
+          themeTokenName: themeName, line: loc.line, column: loc.column,
+          context: getLineText(sourceText, loc.line),
+        }));
+      }
+      return;
+    }
+
+    if (!rawValue || isSafeLiteral(rawValue)) {
       return;
     }
 
     const category = inferCategoryFromProperty(propertyName, rawValue);
-    if (category === "unknown" && !looksStyleLikeValue(rawValue)) {
+    if (category === "unknown") {
       return;
     }
 
-    const firstLiteralNode = findCssLiteralNode(node.value, category);
-    if (!firstLiteralNode) {
-      return;
+    const literals: any[] = [];
+    if (category === "shadows") {
+      if (/var\(/i.test(rawValue)) return;
+      literals.push(node.value);
+    } else {
+      csstree.walk(node.value, function(this: any, child: any) {
+        if (child.type === "Function" && /^(var|url)$/i.test(child.name)) return this.skip;
+        if (category === "colors" && (child.type === "Hash" || isColorFunction(child))) {
+          literals.push(child);
+          return this.skip;
+        }
+        if (category !== "colors" && (child.type === "Dimension" || child.type === "Number") && Number(child.value) !== 0) literals.push(child);
+      });
     }
-
-    const loc = firstLiteralNode.loc?.start ?? node.loc?.start;
-    if (!loc) {
-      return;
-    }
-
-    findings.push(createFinding({
+    for (const literal of literals) {
+      const loc = literal.loc?.start ?? node.loc?.start;
+      if (!loc) continue;
+      const literalText = csstree.generate(literal);
+      const start = node.value.loc?.start.offset;
+      const end = node.value.loc?.end.offset;
+      findings.push(createFinding({
       filePath,
       sourceKind,
+      origin: "css",
+      replacementBefore: `${propertyName}: ${sourceText.slice(start, literal.loc?.start.offset)}`,
+      replacementAfter: sourceText.slice(literal.loc?.end.offset, end).trimEnd() + (node.important ? " !important" : ""),
       propertyName,
-      rawValue,
+      rawValue: literalText,
       category,
       kind: "literal",
       confidence: "medium",
       line: loc.line,
-      column: loc.column + 1,
-      normalizedValue: normalizeValueForCategory(category === "unknown" ? inferCategoryFromLiteral(rawValue) : category, rawValue) ?? rawValue.trim(),
+      column: loc.column,
+      normalizedValue: normalizeValueForCategory(category, literalText) ?? literalText.trim(),
       referencePath: undefined,
       referenceText: undefined,
       context: getLineText(sourceText, loc.line),
-    }));
+      }));
+    }
   });
 
   return findings;
@@ -219,12 +261,12 @@ function inspectObjectExpression(
     }
 
     const literalText = extractLiteralText(value);
-    if (literalText === null || isSafeLiteral(literalText)) {
+    if (literalText === null || isSafeLiteral(literalText) || /^0(?:px|rem|em)?$/.test(literalText)) {
       continue;
     }
 
     const category = inferCategoryFromProperty(propertyName, literalText);
-    if (category === "unknown" && !looksStyleLikeValue(literalText)) {
+    if (category === "unknown") {
       continue;
     }
 
@@ -233,11 +275,12 @@ function inspectObjectExpression(
       continue;
     }
 
-    const normalizedCategory = category === "unknown" ? inferCategoryFromLiteral(literalText) : category;
+    const normalizedCategory = category;
 
     findings.push(createFinding({
       filePath,
       sourceKind,
+      origin: "style-object",
       propertyName,
       rawValue: literalText,
       category: normalizedCategory,
@@ -253,51 +296,10 @@ function inspectObjectExpression(
   }
 }
 
-function findCssLiteralNode(valueNode: any, category: TokenCategory | "unknown"): any | null {
-  const children: any[] = [];
-  valueNode.children?.forEach((child: any) => {
-    children.push(child);
-  });
-
-  for (const child of children) {
-    if (child.type === "Function" && /^var$/i.test(child.name)) {
-      return null;
-    }
-
-    if (category === "colors") {
-      if (child.type === "Hash" || isColorFunction(child)) {
-        return child;
-      }
-      continue;
-    }
-
-    if (category === "shadows") {
-      if (child.type === "Dimension" || child.type === "Number" || child.type === "Function" || child.type === "Hash") {
-        return child;
-      }
-      continue;
-    }
-
-    if (category === "spacing" || category === "radius" || category === "fontSizes") {
-      if (child.type === "Dimension" || child.type === "Number") {
-        return child;
-      }
-      continue;
-    }
-
-    if (looksStyleLikeCssNode(child)) {
-      return child;
-    }
-  }
-
-  return null;
-}
-
 function inferCategoryFromProperty(propertyName: string, rawValue: string): TokenCategory | "unknown" {
-  const normalizedProperty = propertyName.toLowerCase();
-  const normalizedValue = rawValue.toLowerCase();
+  const normalizedProperty = propertyName.replace(/-/g, "").toLowerCase();
 
-  if (normalizedProperty.includes("shadow") || looksShadowValue(normalizedValue)) {
+  if (normalizedProperty.includes("shadow")) {
     return "shadows";
   }
 
@@ -316,8 +318,7 @@ function inferCategoryFromProperty(propertyName: string, rawValue: string): Toke
     normalizedProperty.includes("border") ||
     normalizedProperty.includes("fill") ||
     normalizedProperty.includes("stroke") ||
-    normalizedProperty.includes("ring") ||
-    looksColorValue(normalizedValue)
+    normalizedProperty.includes("ring")
   ) {
     return "colors";
   }
@@ -333,39 +334,12 @@ function inferCategoryFromProperty(propertyName: string, rawValue: string): Toke
     normalizedProperty.includes("left") ||
     normalizedProperty.includes("width") ||
     normalizedProperty.includes("height") ||
-    normalizedProperty.includes("size") ||
-    looksLengthValue(normalizedValue)
+    normalizedProperty.includes("size")
   ) {
     return "spacing";
   }
 
-  if (looksColorValue(normalizedValue)) {
-    return "colors";
-  }
-
-  if (looksLengthValue(normalizedValue)) {
-    return "spacing";
-  }
-
   return "unknown";
-}
-
-function inferCategoryFromLiteral(literalText: string): TokenCategory {
-  const normalized = literalText.toLowerCase();
-
-  if (looksShadowValue(normalized)) {
-    return "shadows";
-  }
-
-  if (looksColorValue(normalized)) {
-    return "colors";
-  }
-
-  if (looksLengthValue(normalized)) {
-    return "spacing";
-  }
-
-  return "spacing";
 }
 
 function createFinding(input: Omit<AnalysisFinding, "context" | "confidence"> & {
@@ -513,28 +487,8 @@ function isSafeLiteral(value: string): boolean {
   return SAFE_LITERAL_VALUES.has(value.trim().toLowerCase());
 }
 
-function looksColorValue(value: string): boolean {
-  return /#([0-9a-f]{3,8})\b/i.test(value) || /rgba?\(/i.test(value) || /hsla?\(/i.test(value);
-}
-
-function looksLengthValue(value: string): boolean {
-  return /^-?\d+(?:\.\d+)?(?:px|rem|em)?$/i.test(value.trim());
-}
-
-function looksShadowValue(value: string): boolean {
-  return /\b(?:rgba?|hsla?|#[0-9a-f]{3,8})\b/i.test(value) && /\d/.test(value);
-}
-
-function looksStyleLikeValue(value: string): boolean {
-  return looksColorValue(value) || looksLengthValue(value) || looksShadowValue(value);
-}
-
-function looksStyleLikeCssNode(node: any): boolean {
-  return node.type === "Hash" || node.type === "Dimension" || node.type === "Number" || isColorFunction(node) || node.type === "Function";
-}
-
 function isColorFunction(node: any): boolean {
-  return node.type === "Function" && /^(rgb|rgba|hsl|hsla)$/i.test(node.name);
+  return node.type === "Function" && /^(rgb|rgba|hsl|hsla|oklch)$/i.test(node.name);
 }
 
 function getLineText(sourceText: string, lineNumber: number): string {

@@ -4,10 +4,11 @@ export type SupportedSourceExtension = (typeof SUPPORTED_SOURCE_EXTENSIONS)[numb
 export type SourceFileKind = "typescript" | "javascript" | "css";
 export type TokenCategory = "colors" | "spacing" | "fontSizes" | "radius" | "shadows";
 export type ValidationSeverity = "valid" | "warning" | "error";
-export type AnalysisKind = "literal" | "reference";
+export type AnalysisKind = "literal" | "reference" | "theme";
 export type ConfidenceLevel = "high" | "medium" | "low";
 
 export interface CliConfig {
+  preset?: "shadcn";
   figmaPath: string;
   srcPath: string;
   exclude?: string[];
@@ -50,6 +51,16 @@ export interface NormalizedTokenIndex {
 }
 
 export interface AnalysisFinding {
+  origin?: "css" | "style-object" | "tailwind";
+  utilityPrefix?: string;
+  className?: string;
+  variants?: string;
+  modifier?: string;
+  replacementBefore?: string;
+  replacementAfter?: string;
+  tailwindColorValue?: string;
+  themeMode?: "Light" | "Dark";
+  themeTokenName?: string;
   filePath: string;
   sourceKind: SourceFileKind;
   line: number;

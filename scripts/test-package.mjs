@@ -30,7 +30,7 @@ try {
   assert.ok(entries.every((entry) => ["dist", "package.json", "README.md", "LICENSE", "node_modules"].includes(entry)));
   await assert.rejects(access(join(installed, "node_modules", "typescript")), { code: "ENOENT" });
   const pkg = JSON.parse(await readFile(join(installed, "package.json"), "utf8"));
-  assert.deepEqual(pkg.bin, { palantree: "./dist/cli.js" });
+  assert.deepEqual(pkg.bin, { palantree: "dist/cli.js" });
   assert.match(await readFile(join(installed, "dist", "cli.js"), "utf8"), /^#!\/usr\/bin\/env node/);
   const project = join(root, "react project");
   await mkdir(join(project, "src"), { recursive: true });
@@ -41,10 +41,11 @@ try {
   const env = { ...process.env, PATH: [binDir, dirname(process.execPath), process.platform === "win32" ? join(process.env.SystemRoot, "System32") : "/usr/bin:/bin"].join(delimiter) };
   delete env.NODE_PATH;
   const init = process.platform === "win32"
-    ? run(process.env.ComSpec || "cmd.exe", ["/d", "/c", "palantree init"], { cwd: project, env })
-    : run("palantree", ["init"], { cwd: project, env });
+    ? run(process.env.ComSpec || "cmd.exe", ["/d", "/c", "palantree init --yes"], { cwd: project, env })
+    : run("palantree", ["init", "--yes"], { cwd: project, env });
   success(init);
   const config = JSON.parse(await readFile(join(project, "design-lint.config.json"), "utf8"));
+  assert.equal(config.preset, "shadcn");
   assert.equal(config.failOnWarnings, true);
   assert.equal(JSON.parse(await readFile(join(project, "package.json"), "utf8")).scripts["lint:design"], "palantree scan --fail-on-warnings");
   const app = join(project, "src", "App.tsx");
@@ -55,6 +56,15 @@ try {
   const failed = invoke();
   assert.equal(failed.status, 1, failed.stderr);
   assert.equal(JSON.parse(failed.stdout).summary.error, 1);
+  await writeFile(join(project, "tokens.json"), JSON.stringify({ Tokens: { Default: { background: { "bg-primary": { $type: "color", $value: "#FB640F" } }, border: { "border-primary": { $type: "color", $value: "#FB640F" } } } } }));
+  await writeFile(app, 'export const App = () => <div className="bg-[#FB640F]" />;');
+  await writeFile(join(project, "src", "styles.css"), '.button { border: 2px solid #FB640F; }');
+  const tailwind = invoke();
+  assert.equal(tailwind.status, 1, tailwind.stderr);
+  const suggestions = JSON.parse(tailwind.stdout).results.map((result) => result.suggestion);
+  assert.ok(suggestions.includes("bg-primary"));
+  assert.ok(suggestions.some((suggestion) => suggestion.includes("border: 2px solid var(--tokens-default-border-border-primary)")));
+  await rm(join(project, "src", "styles.css"));
   await writeFile(app, 'export const App = () => <div style={{ padding: tokens.spacing.md }} />;');
   const passed = success(invoke());
   assert.equal(JSON.parse(passed.stdout).summary.valid, 1);
