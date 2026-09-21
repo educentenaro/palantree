@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 async function createFixture(hardcoded) {
-  const root = await mkdtemp(join(tmpdir(), "design-lint-e2e-"));
+  const root = await mkdtemp(join(tmpdir(), "palantree-e2e-"));
   const tokensDir = join(root, "tokens");
   const srcDir = join(root, "src");
 
@@ -61,7 +61,7 @@ test("CLI reports violations and exits with a failure code", async () => {
   const fixture = await createFixture(true);
   try {
     const cliPath = fileURLToPath(new URL("../../dist/cli.js", import.meta.url));
-    const result = spawnSync(process.execPath, [cliPath, "--figma", fixture.tokensDir, "--src", fixture.srcDir], { encoding: "utf8" });
+    const result = spawnSync(process.execPath, [cliPath, "scan", "--figma", fixture.tokensDir, "--src", fixture.srcDir], { encoding: "utf8" });
 
     const stdout = result.stdout;
     const stderr = result.stderr;
@@ -80,7 +80,7 @@ test("CLI passes when code uses only token references", async () => {
   const fixture = await createFixture(false);
   try {
     const cliPath = fileURLToPath(new URL("../../dist/cli.js", import.meta.url));
-    const result = spawnSync(process.execPath, [cliPath, "--figma", fixture.tokensDir, "--src", fixture.srcDir], { encoding: "utf8" });
+    const result = spawnSync(process.execPath, [cliPath, "scan", "--figma", fixture.tokensDir, "--src", fixture.srcDir], { encoding: "utf8" });
 
     const stdout = result.stdout;
 

@@ -2,26 +2,33 @@
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { loadConfig, type ProjectConfig } from "./config.js";
+import { initProject } from "./init.js";
 import { scan } from "./scan.js";
 import { formatReport } from "./reporter.js";
 
-const usage = `design-lint — React design token linting
+const usage = `palantree — React design token linting
 
-Usage: design-lint scan [options]
+Usage:
+  palantree init [options]
+  palantree scan [options]
 
-Options:
+Init options:
+  --figma, -f <path>       Tokens JSON file or directory (default: tokens.json)
+  --src, -s <path>         Source directory or file (default: src)
+  --force                  Replace conflicting config and lint:design script
+
+Scan options:
   --figma, -f <path>       Tokens JSON file or directory (default: tokens.json)
   --src, -s <path>         Source directory or file (default: src)
   --config, -c <path>      JSON config (default: ./design-lint.config.json)
-  --format <text|json>    Report format
-  --fail-on-warnings     Fail on warnings as well as errors
-  --help, -h             Show help
-  --version, -v          Show version
+  --format <text|json>     Report format
+  --fail-on-warnings       Fail on warnings as well as errors
 
-Config supports figma, src, exclude (paths), format and failOnWarnings.
-Config paths are relative to its directory; CLI paths to the working directory.
-Exit codes: 0 passed; 1 lint violations; 2 configuration, I/O or parse failure.
-Legacy invocation without "scan" remains supported.`;
+Global options:
+  --help, -h               Show help
+  --version, -v            Show version
+
+Exit codes: 0 passed; 1 lint violations; 2 configuration, I/O or parse failure.`;
 
 async function main() {
   try {
@@ -32,25 +39,40 @@ async function main() {
         config: { type: "string", short: "c" },
         format: { type: "string" },
         "fail-on-warnings": { type: "boolean" },
+        force: { type: "boolean" },
         help: { type: "boolean", short: "h" },
         version: { type: "boolean", short: "v" },
       },
       allowPositionals: true,
       strict: true,
     });
-    if (positionals.length > 1 || (positionals.length === 1 && positionals[0] !== "scan")) {
-      throw new Error(`Unknown command: ${positionals.join(" ")}. Use "design-lint scan".`);
-    }
     if (values.help || process.argv.length === 2) { console.log(usage); return; }
     if (values.version) {
       const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
       console.log(pkg.version);
       return;
     }
-    if (values.format !== undefined && values.format !== "text" && values.format !== "json") throw new Error("--format must be text or json");
+    if (positionals.length !== 1 || !["init", "scan"].includes(positionals[0])) {
+      throw new Error(`Unknown command: ${positionals.join(" ") || "(missing)"}. Use "palantree init" or "palantree scan".`);
+    }
     for (const key of ["figma", "src", "config"] as const) {
       if (values[key] !== undefined && !values[key]!.trim()) throw new Error(`--${key} requires a non-empty path`);
     }
+
+    if (positionals[0] === "init") {
+      if (values.config !== undefined || values.format !== undefined || values["fail-on-warnings"] !== undefined) {
+        throw new Error("init only accepts --figma, --src and --force");
+      }
+      const result = await initProject({ figma: values.figma, src: values.src, force: values.force });
+      console.log("Palantree initialized.");
+      console.log("Created design-lint.config.json and added the lint:design script.");
+      for (const warning of result.warnings) console.warn(`Warning: ${warning}`);
+      console.log("Run: npm run lint:design");
+      return;
+    }
+
+    if (values.force !== undefined) throw new Error("scan does not accept --force");
+    if (values.format !== undefined && values.format !== "text" && values.format !== "json") throw new Error("--format must be text or json");
     const overrides: ProjectConfig = {};
     if (values.figma !== undefined) overrides.figma = values.figma;
     if (values.src !== undefined) overrides.src = values.src;
@@ -65,7 +87,7 @@ async function main() {
       : `Scanned ${files.length} file${files.length === 1 ? "" : "s"}\n\n${report.text}`);
     process.exitCode = failed ? 1 : 0;
   } catch (error) {
-    console.error(`design-lint: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`palantree: ${error instanceof Error ? error.message : String(error)}`);
     process.exitCode = 2;
   }
 }

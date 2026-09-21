@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 
 const cli = fileURLToPath(new URL("../../dist/cli.js", import.meta.url));
 async function fixture(t) {
-  const root = await mkdtemp(join(tmpdir(), "design lint config "));
+  const root = await mkdtemp(join(tmpdir(), "palantree-config-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "src"));
   await writeFile(join(root, "tokens.json"), JSON.stringify({ spacing: { md: { $type: "dimension", $value: "12px" } } }));
@@ -20,7 +20,7 @@ async function fixture(t) {
   };
 }
 
-test("scan defaults, JSON report and legacy flags", async (t) => {
+test("scan defaults and JSON report", async (t) => {
   const f = await fixture(t);
   const result = f.run("scan", "--format=json");
   assert.equal(result.status, 1, result.stderr);
@@ -28,7 +28,7 @@ test("scan defaults, JSON report and legacy flags", async (t) => {
   assert.equal(report.summary.error, 1);
   assert.equal(report.passed, false);
   assert.equal(report.files.length, 1);
-  assert.equal(f.run("-f", "tokens.json", "-s", "src").status, 1);
+  assert.equal(f.run("scan", "-f", "tokens.json", "-s", "src").status, 1);
 });
 
 test("config exclusions and CLI overrides", async (t) => {
@@ -55,13 +55,20 @@ test("invalid arguments and configuration exit 2 without report", async (t) => {
   for (const args of [["scna"], ["scan", "--unknown"], ["scan", "--src"], ["scan", "--src="], ["scan", "--format=xml"], ["scan", "-c", "missing.json"]]) {
     const result = f.run(...args);
     assert.equal(result.status, 2, JSON.stringify(args));
-    assert.match(result.stderr, /design-lint:/);
+    assert.match(result.stderr, /palantree:/);
     assert.equal(result.stdout, "");
   }
   for (const config of [null, [], { typo: true }, { src: 1 }, { exclude: ["**/*.tsx"] }, { failOnWarnings: "yes" }]) {
     await f.config(config);
     assert.equal(f.run("scan").status, 2, JSON.stringify(config));
   }
+});
+
+test("scan requires the explicit command", async (t) => {
+  const f = await fixture(t);
+  const result = f.run("-f", "tokens.json", "-s", "src");
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /Use "palantree init" or "palantree scan"/);
 });
 
 test("missing tokens, malformed tokens, empty sources and invalid TSX fail clearly", async (t) => {

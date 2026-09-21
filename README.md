@@ -1,71 +1,79 @@
-# design-lint
+# Palantree
 
-CLI para identificar valores de estilo que deveriam usar Design Tokens em projetos React. Usa ASTs de JavaScript, TypeScript, JSX e CSS; não precisa executar nem compilar o projeto analisado.
+CLI para encontrar valores de estilo que deveriam usar Design Tokens em projetos React. A análise usa ASTs de JavaScript, TypeScript, JSX e CSS, sem executar nem compilar o projeto analisado.
 
-Requisito: **Node.js 22 ou superior e npm**. Bun, TypeScript e React não precisam estar instalados globalmente. O pacote distribuído contém JavaScript compilado e o npm instala as dependências de análise automaticamente.
+Requer Node.js 22 ou superior. React, TypeScript e Bun não precisam estar instalados globalmente.
 
-## Instalar e usar
+## Instalação
 
-Depois da publicação deste pacote no npm:
-
-```sh
-npm install -g design-lint
-design-lint --version
-```
-
-Dentro do projeto React, crie `design-lint.config.json`:
-
-```json
-{
-  "figma": "./tokens",
-  "src": "./src",
-  "exclude": ["./src/generated", "./src/legacy/OldButton.tsx"],
-  "format": "text",
-  "failOnWarnings": false
-}
-```
-
-Execute:
+Depois da publicação no npm, instale no projeto que será analisado:
 
 ```sh
-design-lint scan
+npm install --save-dev palantree
+npx palantree init
 ```
 
-Sem configuração, `scan` procura `tokens.json` e `src` no diretório atual. O arquivo de configuração padrão é procurado apenas no diretório atual, sem busca nos diretórios pais. `figma` aceita um arquivo JSON ou um diretório de arquivos JSON, percorrido recursivamente.
-
-Também é possível configurar tudo por argumentos:
-
-```sh
-design-lint scan --figma ./tokens --src ./src
-design-lint scan --config ./config/lint.json
-design-lint scan --src ./src/Button.tsx --format json
-design-lint scan --fail-on-warnings
-design-lint --help
-```
-
-Os argumentos substituem as respectivas opções do arquivo. Caminhos do arquivo de configuração são relativos à pasta desse arquivo; caminhos dos argumentos são relativos ao diretório de execução. `exclude` contém caminhos exatos de arquivos ou diretórios (incluindo seus descendentes), não padrões glob. Exclusões permanecem ativas ao usar `--src`. Campos desconhecidos e tipos incorretos na configuração são rejeitados para detectar erros de digitação.
-
-São analisados `.tsx`, `.ts`, `.jsx`, `.js` e `.css`. Diretórios ocultos, `node_modules`, `dist`, `build`, `coverage` e `out` são ignorados durante a descoberta recursiva. Links simbólicos encontrados nessa descoberta não são seguidos. A ferramenta não interpreta `.gitignore`. A chamada antiga `design-lint --figma tokens.json --src src` continua funcionando.
-
-Para instalação local e CI, depois de publicado:
-
-```sh
-npm install --save-dev design-lint
-```
-
-Adicione aos scripts do projeto:
+O `init` cria `design-lint.config.json` e adiciona este script ao `package.json`:
 
 ```json
 {
   "scripts": {
-    "lint:design": "design-lint scan --fail-on-warnings"
+    "lint:design": "palantree scan --fail-on-warnings"
   }
 }
 ```
 
-Execute `npm run lint:design`. Não são necessários plugins de Vite, Babel ou do framework.
+Ele usa `./tokens.json` e `./src` por padrão. Para outros caminhos:
 
-## Tokens e relatórios
+```sh
+npx palantree init --figma ./design-tokens/tokens.json --src ./app
+```
+
+Configurações ou scripts diferentes não são sobrescritos. Use `--force` quando quiser substituí-los deliberadamente. Se tokens ou fontes ainda não existirem, o comando conclui a configuração e mostra avisos com os caminhos pendentes.
+
+Execute o lint com:
+
+```sh
+npm run lint:design
+```
+
+Ou diretamente:
+
+```sh
+npx palantree scan
+```
+
+`palantree` é o único executável exposto pelo pacote.
+
+## Configuração
+
+O arquivo gerado pelo `init` tem este formato:
+
+```json
+{
+  "figma": "./tokens.json",
+  "src": "./src",
+  "exclude": [],
+  "format": "text",
+  "failOnWarnings": true
+}
+```
+
+`figma` aceita um arquivo JSON ou um diretório percorrido recursivamente. Caminhos da configuração são relativos à pasta do arquivo; caminhos informados na CLI são relativos ao diretório de execução. `exclude` aceita caminhos exatos de arquivos ou diretórios, não globs.
+
+Os argumentos de `scan` substituem as opções correspondentes:
+
+```sh
+npx palantree scan --figma ./tokens --src ./src
+npx palantree scan --config ./config/lint.json
+npx palantree scan --src ./src/Button.tsx --format json
+npx palantree scan --fail-on-warnings
+npx palantree --help
+```
+
+Sem configuração, `scan` procura `tokens.json` e `src` no diretório atual. O arquivo padrão é procurado apenas nesse diretório, sem busca nas pastas pais.
+
+## Tokens e resultado
 
 Exemplo mínimo de `tokens.json`:
 
@@ -80,35 +88,25 @@ Exemplo mínimo de `tokens.json`:
 }
 ```
 
+Ao analisar:
+
 ```tsx
 export const Button = () => (
   <button style={{ color: "#13544A", padding: "12px" }}>Salvar</button>
 );
 ```
 
-Saída ilustrativa:
+o Palantree informa arquivo, linha, coluna, severidade e a sugestão de token. `--format json` produz um objeto com `files`, `results`, `summary` e `passed`.
 
-```text
-Scanned 1 file
-
-❌ src/Button.tsx:2:28  Hardcoded color "#13544A" → var(--color-brand)
-❌ src/Button.tsx:2:48  Hardcoded spacing "12px" → var(--spacing-md)
-
-Summary: 2 errors, 0 warnings, 0 valid
-Result: failed
-```
-
-As posições reais são obtidas do parser. O relatório informa arquivo, linha, coluna, severidade e sugestão quando encontra um token compatível. O total `valid` conta usos aceitos, não arquivos. `--format json` escreve um único objeto JSON em stdout com `files`, `results`, `summary` e `passed`; caminhos no JSON são absolutos. Falhas operacionais escrevem uma mensagem em stderr, sem relatório parcial em stdout.
-
-| Código de saída | Significado |
+| Código | Significado |
 | --- | --- |
-| 0 | Sem erros; warnings são permitidos por padrão |
-| 1 | Violações, ou warnings quando `failOnWarnings` está ativo |
-| 2 | Argumentos/configuração inválidos, falha de leitura, tokens/fontes ausentes ou erro de parsing |
+| 0 | Sem erros; warnings permitidos quando `failOnWarnings` está desativado |
+| 1 | Violações, ou warnings com `failOnWarnings` ativado |
+| 2 | Argumentos, configuração, leitura ou parsing inválidos |
 
-O núcleo existente foi preservado: normalização de cores, espaçamento, tamanhos de fonte, raios e sombras; aliases; sugestões de variáveis CSS e referências JS. Valores literais de tamanho de fonte geram warnings; os demais seguem as regras existentes do validador. Referências com raiz `theme` ou `tokens` são aceitas pelo validador mesmo quando não são resolvidas no export. Portanto, o lint não garante que essas referências existam em runtime.
+São analisados `.tsx`, `.ts`, `.jsx`, `.js` e `.css`. Diretórios ocultos, `node_modules`, `dist`, `build`, `coverage` e `out` são ignorados. Links simbólicos encontrados na descoberta recursiva não são seguidos.
 
-A análise é estática: inspeciona estilos JSX e objetos CSS-in-JS, além de declarações CSS. Não executa expressões dinâmicas nem resolve imports. Não promete cobertura de classes utilitárias Tailwind ou de CSS dentro de template literals. Os formatos de tokens suportados são os exports demonstrados em `example`, com folhas `$type`/`$value`; não se trata de suporte completo a toda variante do padrão de tokens.
+A análise cobre declarações CSS, estilos JSX e objetos CSS-in-JS. Ela não resolve imports ou expressões dinâmicas e ainda não verifica classes Tailwind/shadcn em `className` nem CSS dentro de template literals. Os tokens suportados usam folhas `$type`/`$value`.
 
 ## Desenvolvimento
 
@@ -119,50 +117,38 @@ npm test
 npm run test:package
 ```
 
-- `npm run build`: compila `src` para `dist` usando TypeScript e módulos ESM compatíveis com Node.
-- `npm test`: compila e executa testes unitários, de integração e da CLI com `node:test`.
-- `npm run test:package`: cria um `.tgz`, instala globalmente com um prefixo temporário e executa o comando gerado pelo npm em um projeto React separado. Verifica falha com literal e sucesso com token, usando um PATH sem Bun. Remove apenas os diretórios temporários criados pelo teste. Requer acesso ao registry ou dependências no cache npm.
-- `npm start -- scan --figma example --src example/src`: executa a build local (o exemplo contém violações intencionais).
+- `npm run build` compila `src` para `dist` como ESM compatível com Node.
+- `npm test` compila e executa testes unitários, de integração e da CLI.
+- `npm run test:package` empacota, instala globalmente em um prefixo temporário e verifica `init` e `scan` em um projeto React isolado.
+- `npm start -- --help` mostra a ajuda da build local.
 
-O lockfile canônico é `package-lock.json`. A CI está preparada para Node 22/24 em Linux, macOS e Windows, incluindo o teste do pacote. Essa matriz precisa executar no serviço de CI para confirmar todas as plataformas.
+O pacote expõe somente a CLI; os módulos internos não são uma API pública estável. Nenhum script de instalação compila código na máquina do consumidor.
 
-### Arquitetura
+## Empacotamento e publicação
 
-| Módulo | Responsabilidade |
-| --- | --- |
-| `cli.ts` | Argumentos, saída e códigos de saída |
-| `config.ts` | Leitura, validação e resolução de caminhos por projeto |
-| `scan.ts` | Orquestração reutilizável, sem imprimir ou encerrar o processo |
-| `figma-parser.ts` | Leitura e extração dos tokens |
-| `token-normalizer.ts` | Normalização, aliases e índices |
-| `file-scanner.ts` | Descoberta e exclusão de arquivos |
-| `ast-analyzer.ts` | Análise AST com Babel e css-tree |
-| `validator.ts` | Regras de comparação e severidade |
-| `reporter.ts` | Relatório legível e resumo |
-
-O pacote expõe a CLI; os módulos internos não são uma API pública estável. Nenhum script de instalação compila código na máquina do consumidor. A distribuição usa `bin: ./dist/cli.js`, shebang Node e uma lista explícita de arquivos publicáveis. O processo de `prepack` checa e compila antes de gerar o pacote, conforme a [documentação do npm](https://docs.npmjs.com/cli/v11/configuring-npm/package-json).
-
-## Gerar e instalar antes da publicação
-
-No repositório:
+Antes de publicar:
 
 ```sh
-npm ci
+npm run check
 npm test
 npm run test:package
+npm pack --dry-run
 npm pack
-npm install -g ./design-lint-0.1.0.tgz
 ```
 
-Em outro projeto, configure os tokens e execute `design-lint scan`. Use o caminho absoluto do `.tgz` se estiver em outra pasta. O npm configura o executável global; o diretório de executáveis globais deve estar no PATH do shell. No Windows o npm também gera `design-lint.cmd`. Para remover a instalação: `npm uninstall -g design-lint`.
+O artefato local será `palantree-0.1.0.tgz`. Ele pode ser validado antes da publicação com:
 
-`npm pack` gera o artefato local e **não publica**. O pacote inclui `dist`, `package.json` e este README; não inclui testes, exemplos, fontes TypeScript ou ferramentas locais. As dependências de produção são instaladas pelo npm.
+```sh
+npm install --save-dev ./palantree-0.1.0.tgz
+npx palantree init
+npx palantree scan
+```
 
-## Distribuição futura
+Para publicar a versão validada:
 
-1. Confirme a disponibilidade e a titularidade do nome `design-lint` no registry. O nome local não reserva o nome no npm. Caso necessário, use um escopo, por exemplo `@sua-org/design-lint`; o comando continuará `design-lint`.
-2. Defina a licença e acrescente o arquivo `LICENSE` e os metadados `license`, `author` e `repository` conforme a autoria real. Este projeto não escolhe uma licença em nome do autor.
-3. Atualize a versão em `package.json` e `package-lock.json`, execute os testes e inspecione `npm pack --dry-run`.
-4. Gere e valide o `.tgz` final. Somente quando decidir publicar, autentique-se no npm e execute `npm publish ./design-lint-0.1.0.tgz` (ajuste a versão; para escopo público, acrescente `--access public`).
+```sh
+npm login
+npm publish ./palantree-0.1.0.tgz --access public
+```
 
-Nenhuma publicação é executada pelos scripts ou pela CI deste repositório.
+O pacote está marcado como `UNLICENSED`: a publicação permite o download pelo npm, mas não concede uma licença aberta de redistribuição ou modificação.

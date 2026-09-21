@@ -18,7 +18,7 @@ afterEach(async () => {
 });
 
 test("loads tokens, scans sources, and produces a mixed report", async () => {
-  const root = await mkdtemp(join(tmpdir(), "design-lint-pipeline-"));
+  const root = await mkdtemp(join(tmpdir(), "palantree-pipeline-"));
   tempDirs.push(root);
 
   const tokensDir = join(root, "tokens");

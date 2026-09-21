@@ -1,12 +1,15 @@
 {
-  "name": "design-lint",
+  "name": "palantree",
   "version": "0.1.0",
-  "description": "AST-based React design token linting for JavaScript, TypeScript and CSS",
+  "description": "Design token linting for React, JavaScript, TypeScript and CSS",
+  "license": "UNLICENSED",
+  "keywords": ["react", "design-system", "design-tokens", "lint", "figma"],
+  "publishConfig": { "access": "public" },
   "engines": { "node": ">=22" },
   "files": ["dist"],
   "type": "module",
   "bin": {
-    "design-lint": "./dist/cli.js"
+    "palantree": "./dist/cli.js"
   },
   "scripts": {
     "start": "node ./dist/cli.js",

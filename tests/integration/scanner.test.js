@@ -7,7 +7,7 @@ import { collectSourceFiles } from "../../dist/file-scanner.js";
 import { analyzeSourceFile } from "../../dist/ast-analyzer.js";
 
 test("scanner excludes whole directories without excluding siblings with the same prefix", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "design-lint-scanner-"));
+  const root = await mkdtemp(join(tmpdir(), "palantree-scanner-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const dir of ["generated", "generated-other", "node_modules", "dist", ".hidden"]) {
     await mkdir(join(root, dir));
