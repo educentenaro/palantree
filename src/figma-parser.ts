@@ -2,12 +2,14 @@ import { extname, join, resolve } from "node:path";
 import { readFile, readdir, stat } from "node:fs/promises";
 import type { RawToken } from "./types.js";
 
+const IGNORED_DIRECTORIES = new Set(["node_modules", "dist", "build", "coverage", ".git", ".cache", "out"]);
+
 export async function loadRawTokens(inputPath: string): Promise<RawToken[]> {
   const resolvedPath = resolve(inputPath);
   const stats = await stat(resolvedPath);
-  const inputFiles = stats.isDirectory()
-    ? await collectJsonFiles(resolvedPath)
-    : [resolvedPath];
+  const discoveredFiles = stats.isDirectory() ? await collectJsonFiles(resolvedPath) : [resolvedPath];
+  const tokenNamedFiles = discoveredFiles.filter((path) => path.toLowerCase().endsWith(".tokens.json"));
+  const inputFiles = tokenNamedFiles.length ? tokenNamedFiles : discoveredFiles;
 
   const rawTokens: RawToken[] = [];
 
@@ -45,6 +47,7 @@ async function collectJsonFiles(directoryPath: string): Promise<string[]> {
     const entryPath = join(directoryPath, entry.name);
 
     if (entry.isDirectory()) {
+      if (entry.name.startsWith(".") || IGNORED_DIRECTORIES.has(entry.name)) continue;
       files.push(...(await collectJsonFiles(entryPath)));
       continue;
     }

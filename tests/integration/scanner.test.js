@@ -22,3 +22,12 @@ test("CSS parser retains declarations and reports malformed CSS", async () => {
   assert.equal(findings.length, 2);
   await assert.rejects(analyzeSourceFile("broken.css", ".button { color red; }"));
 });
+
+test("CSS parser accepts Tailwind v4 directive preludes", async () => {
+  const css = `@import "tailwindcss";
+@custom-variant dark (&:is(.dark *));
+@layer base { body { margin: 12px; } }`;
+  const findings = await analyzeSourceFile("styles.css", css);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].propertyName, "margin");
+});

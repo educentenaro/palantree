@@ -45,6 +45,17 @@ test("init protects conflicts and supports explicit force", async (t) => {
   assert.equal(config.figma, "design/tokens.json");
 });
 
+test("init discovers a nested .tokens.json file", async (t) => {
+  const f = await fixture(t);
+  await rm(join(f.root, "tokens.json"));
+  await writeFile(join(f.root, "src", "Default.tokens.json"), JSON.stringify({ spacing: { md: { $type: "dimension", $value: "12px" } } }));
+  const result = f.run("init");
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stderr, /Token path not found/);
+  const config = JSON.parse(await readFile(join(f.root, "design-lint.config.json"), "utf8"));
+  assert.equal(config.figma, "./src/Default.tokens.json");
+});
+
 test("init requires package.json and rejects scan-only options", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "palantree-init-missing-"));
   t.after(() => rm(root, { recursive: true, force: true }));

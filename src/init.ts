@@ -1,5 +1,5 @@
-import { access, readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { access, readFile, readdir, writeFile } from "node:fs/promises";
+import { join, relative, resolve, sep } from "node:path";
 
 export interface InitOptions {
   figma?: string;
@@ -9,6 +9,7 @@ export interface InitOptions {
 
 const CONFIG_FILE = "design-lint.config.json";
 const LINT_SCRIPT = "palantree scan --fail-on-warnings";
+const IGNORED_DIRECTORIES = new Set(["node_modules", "dist", "build", "coverage", ".git", ".cache", "out"]);
 
 export async function initProject(options: InitOptions, cwd = process.cwd()) {
   const packagePath = resolve(cwd, "package.json");
@@ -16,7 +17,7 @@ export async function initProject(options: InitOptions, cwd = process.cwd()) {
   const packageText = await readRequiredFile(packagePath, "Run palantree init from a project containing package.json");
   const packageJson = parseObject(packageText, packagePath);
   const scripts = packageJson.scripts === undefined ? {} : parseObjectValue(packageJson.scripts, '"scripts" in package.json must be an object');
-  const figma = options.figma ?? "./tokens.json";
+  const figma = options.figma ?? await discoverTokenPath(cwd) ?? "./tokens.json";
   const src = options.src ?? "./src";
   const config = { figma, src, exclude: [], format: "text", failOnWarnings: true };
   const configText = `${JSON.stringify(config, null, 2)}\n`;
@@ -99,4 +100,46 @@ async function exists(path: string) {
   } catch {
     return false;
   }
+}
+
+async function discoverTokenPath(cwd: string): Promise<string | undefined> {
+  for (const candidate of ["tokens.json", "tokens", "design-tokens"]) {
+    const candidatePath = resolve(cwd, candidate);
+    if (await exists(candidatePath)) return toConfigPath(cwd, candidatePath);
+  }
+
+  const tokenFiles = await collectTokenFiles(cwd);
+  if (tokenFiles.length === 1) return toConfigPath(cwd, tokenFiles[0]);
+  if (tokenFiles.length > 1) return toConfigPath(cwd, commonDirectory(tokenFiles));
+  return undefined;
+}
+
+async function collectTokenFiles(directory: string): Promise<string[]> {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files: string[] = [];
+  for (const entry of entries) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      if (!entry.name.startsWith(".") && !IGNORED_DIRECTORIES.has(entry.name)) files.push(...await collectTokenFiles(path));
+    } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".tokens.json")) {
+      files.push(path);
+    }
+  }
+  return files.sort((left, right) => left.localeCompare(right));
+}
+
+function commonDirectory(files: string[]) {
+  const directories = files.map((file) => file.split(/[\\/]/).slice(0, -1));
+  const common: string[] = [];
+  for (let index = 0; index < directories[0].length; index += 1) {
+    const segment = directories[0][index];
+    if (!directories.every((parts) => parts[index]?.toLowerCase() === segment.toLowerCase())) break;
+    common.push(segment);
+  }
+  return common.join(sep);
+}
+
+function toConfigPath(cwd: string, path: string) {
+  const value = relative(cwd, path).split(sep).join("/");
+  return value === "" ? "." : value.startsWith(".") ? value : `./${value}`;
 }

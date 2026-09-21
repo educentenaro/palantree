@@ -23,7 +23,7 @@ O `init` cria `design-lint.config.json` e adiciona este script ao `package.json`
 }
 ```
 
-Ele usa `./tokens.json` e `./src` por padrão. Para outros caminhos:
+Ele usa `./src` como fonte e procura, nesta ordem, `tokens.json`, os diretórios `tokens` ou `design-tokens` e arquivos `*.tokens.json` dentro do projeto. Para informar caminhos manualmente:
 
 ```sh
 npx palantree init --figma ./design-tokens/tokens.json --src ./app
@@ -71,7 +71,7 @@ npx palantree scan --fail-on-warnings
 npx palantree --help
 ```
 
-Sem configuração, `scan` procura `tokens.json` e `src` no diretório atual. O arquivo padrão é procurado apenas nesse diretório, sem busca nas pastas pais.
+Sem configuração, `scan` procura `tokens.json` e `src` no diretório atual. A descoberta de `*.tokens.json` acontece durante `palantree init`; o `scan` usa exatamente o caminho salvo. O arquivo de configuração é procurado apenas no diretório atual, sem busca nas pastas pais.
 
 ## Tokens e resultado
 
@@ -136,10 +136,10 @@ npm pack --dry-run
 npm pack
 ```
 
-O artefato local será `palantree-0.1.0.tgz`. Ele pode ser validado antes da publicação com:
+O artefato local usa o formato `palantree-<versão>.tgz`. Ele pode ser validado antes da publicação com:
 
 ```sh
-npm install --save-dev ./palantree-0.1.0.tgz
+npm install --save-dev ./palantree-0.1.1.tgz
 npx palantree init
 npx palantree scan
 ```
@@ -148,7 +148,7 @@ Para publicar a versão validada:
 
 ```sh
 npm login
-npm publish ./palantree-0.1.0.tgz --access public
+npm publish ./palantree-0.1.1.tgz --access public
 ```
 
 O pacote está marcado como `UNLICENSED`: a publicação permite o download pelo npm, mas não concede uma licença aberta de redistribuição ou modificação.

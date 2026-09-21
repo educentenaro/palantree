@@ -1,6 +1,6 @@
 {
   "name": "palantree",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Design token linting for React, JavaScript, TypeScript and CSS",
   "license": "UNLICENSED",
   "keywords": ["react", "design-system", "design-tokens", "lint", "figma"],

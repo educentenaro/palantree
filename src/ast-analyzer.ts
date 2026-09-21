@@ -99,6 +99,9 @@ function analyzeCssSource(filePath: string, sourceText: string): AnalysisFinding
   const findings: AnalysisFinding[] = [];
   const ast = csstree.parse(sourceText, {
     positions: true,
+    // Tailwind directives such as @custom-variant use non-standard preludes.
+    // Keep those preludes raw while still parsing and validating declarations.
+    parseAtrulePrelude: false,
     onParseError(error: Error) { throw error; },
   });
 
