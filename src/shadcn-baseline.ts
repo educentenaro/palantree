@@ -12,7 +12,7 @@ export const SHADCN_COLOR_NAMES = new Set([
 
 const NATIVE_FONT_SIZES = new Set(["xs", "sm", "base", "lg", "xl", "2xl", "3xl", "4xl", "5xl", "6xl", "7xl", "8xl", "9xl"]);
 const NATIVE_SHADOWS = new Set(["2xs", "xs", "sm", "md", "lg", "xl", "2xl", "none"]);
-const NATIVE_FONT_REM = new Set([0.75, 0.875, 1, 1.125, 1.25, 1.5, 1.875, 2.25, 3, 3.75, 4.5, 6, 8]);
+const NATIVE_FONT_REM = new Set([0.75, 0.8, 0.875, 1, 1.125, 1.25, 1.5, 1.875, 2.25, 3, 3.75, 4.5, 6, 8]);
 const NATIVE_RADIUS_REM = new Set([0.125, 0.25, 0.375, 0.5, 0.75, 1, 1.5, 2, 3]);
 
 export function isNativeFontSize(value: string): boolean {

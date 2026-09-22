@@ -133,9 +133,9 @@ A análise cobre declarações CSS, estilos JSX, objetos CSS-in-JS e classes Tai
 
 Classes são extraídas de strings, trechos completos de templates, ternários, expressões lógicas e composições com `cn`, `clsx`, `classnames` e `cva` (incluindo variantes). A ferramenta não executa JavaScript, não resolve imports/variáveis e não interpreta classes montadas por interpolação, como `bg-${color}`, nem CSS dentro de template literals.
 
-Valores arbitrários de cores, espaçamento/dimensões, raio, tamanho de fonte e sombras geram violações. As sugestões consideram o contexto: `bg-[#FB640F]` sugere `bg-primary`, enquanto `border-[#FB640F]` sugere `border-primary`, quando esses tokens têm o mesmo valor. Variantes como `hover:` e `md:` são preservadas. Opacidade numérica (`/90`) é comparada incluindo o alpha final; valores sem correspondência exata permanecem sem sugestão. A análise não implementa toda a gramática ou configuração do Tailwind.
+Valores arbitrários de cores, espaçamento/dimensões, raio, tamanho de fonte e sombras geram violações. As sugestões consideram o contexto: `bg-[#FB640F]` sugere `bg-primary`, enquanto `border-[#FB640F]` sugere `border-primary`, quando esses tokens têm o mesmo valor. Variantes como `hover:` e `md:` são preservadas. Tokens semânticos shadcn aceitam modificadores numéricos de opacidade, como `bg-primary/80` e `ring-ring/50`; cores arbitrárias com opacidade continuam sendo comparadas pelo alpha final. Valores sem correspondência exata permanecem sem sugestão. A análise não implementa toda a gramática ou configuração do Tailwind.
 
-A baseline aceita as classes nativas de layout, espaçamento, dimensões, tipografia, raio, sombra e estrutura do Tailwind/shadcn, como `px-2.5`, `text-sm`, `max-w-7xl`, `rounded-lg`, `shadow-sm` e `border-b`. Elas não precisam existir no JSON do Figma.
+A baseline aceita as classes nativas de layout, espaçamento, dimensões, tipografia, raio, sombra e estrutura do Tailwind/shadcn, como `px-2.5`, `text-sm`, `max-w-7xl`, `rounded-lg`, `shadow-sm` e `border-b`. Expressões geradas pelas versões atuais do shadcn, como `color-mix(...)`, `rounded-[min(var(--radius-md),12px)]` e `text-[0.8rem]`, também são reconhecidas quando permanecem apoiadas nas variáveis do tema. Elas não precisam existir no JSON do Figma.
 
 Cores seguem uma regra mais estrita. Os nomes semânticos oficiais do shadcn, como `bg-background`, `text-card-foreground`, `border-border` e `ring-ring`, são aceitos, assim como nomes personalizados em `Tokens.Default`. Cores diretas da paleta Tailwind, como `text-white`, `bg-black` e `border-white/10`, continuam sendo violações e recebem uma sugestão semântica quando o JSON contém uma correspondência exata.
 
@@ -176,7 +176,7 @@ npm pack
 O artefato local usa o formato `palantree-<versão>.tgz`. Ele pode ser validado antes da publicação com:
 
 ```sh
-npm install --save-dev ./palantree-0.3.1.tgz
+npm install --save-dev ./palantree-0.3.2.tgz
 npx palantree init --yes
 npx palantree scan
 ```
@@ -185,7 +185,7 @@ Para publicar a versão validada:
 
 ```sh
 npm login
-npm publish ./palantree-0.3.1.tgz --access public
+npm publish ./palantree-0.3.2.tgz --access public
 ```
 
 O pacote está marcado como `UNLICENSED`: a publicação permite o download pelo npm, mas não concede uma licença aberta de redistribuição ou modificação.

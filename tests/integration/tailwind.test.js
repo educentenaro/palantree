@@ -89,6 +89,25 @@ test("accepts the shadcn baseline and reports only non-semantic named colors", a
   assert.equal(results[4].suggestion, undefined);
 });
 
+test("accepts classes emitted by current shadcn button variants", async () => {
+  const fixture = fileURLToPath(new URL("../fixtures/shadcn.tokens.json", import.meta.url));
+  const tokens = normalizeTokens(await loadRawTokens(fixture));
+  const source = `<button className="
+    focus-visible:ring-ring/50 aria-invalid:ring-destructive/20
+    dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40
+    hover:bg-primary/80 dark:bg-input/30 dark:hover:bg-input/50
+    hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)]
+    dark:hover:bg-muted/50 bg-destructive/10 hover:bg-destructive/20
+    focus-visible:border-destructive/40 dark:hover:bg-destructive/30
+    rounded-[min(var(--radius-md),10px)] rounded-[min(var(--radius-md),12px)] text-[0.8rem]
+  " />`;
+  const findings = await analyzeSourceFile("button.tsx", source);
+  const results = validateFindings(findings, tokens);
+  assert.ok(results.length > 0);
+  assert.ok(results.every(result => result.severity === "valid"), JSON.stringify(results, null, 2));
+  assert.ok(!findings.some(finding => finding.className?.includes("color-mix") || finding.className?.startsWith("rounded-[min")));
+});
+
 test("validates shadcn Light and Dark CSS variables and ignores theme infrastructure", async () => {
   const fixture = fileURLToPath(new URL("../fixtures/shadcn.tokens.json", import.meta.url));
   const tokens = normalizeTokens(await loadRawTokens(fixture));

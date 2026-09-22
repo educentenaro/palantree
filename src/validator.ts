@@ -55,14 +55,10 @@ function validateReferenceFinding(
   if (finding.origin === "tailwind") {
     const base = finding.normalizedValue.replace(/^-/, "");
     const token = tokenIndex.tokens.find((item) => item.category === finding.category && semanticUtilityName(item, finding.utilityPrefix!) === base);
-    if (token && !finding.modifier) return { finding, severity: "valid", message: `Uses token class ${finding.className}`, matchedToken: token };
-    if (token && finding.modifier) {
-      const composed = withOpacity(token.normalizedValue, finding.modifier);
-      const alphaToken = composed && semanticMatchesByValue(tokenIndex, "colors", composed)
-        .find(item => semanticUtilityName(item, finding.utilityPrefix!) === `${base}-${finding.modifier}`);
-      if (alphaToken) return { finding, severity: "valid", message: `Uses token class ${finding.className}`, matchedToken: alphaToken };
+    if (token && isAllowedSemanticModifier(finding.modifier)) {
+      return { finding, severity: "valid", message: `Uses token class ${finding.className}`, matchedToken: token };
     }
-    if (isBuiltInSemanticClass(finding) && !finding.modifier) {
+    if (isBuiltInSemanticClass(finding) && isAllowedSemanticModifier(finding.modifier)) {
       return { finding, severity: "valid", message: `Uses shadcn semantic class ${finding.className}` };
     }
     const matchedTokens = finding.tailwindColorValue
@@ -109,6 +105,10 @@ function validateReferenceFinding(
   };
 }
 
+function isAllowedSemanticModifier(modifier?: string): boolean {
+  return modifier === undefined || /^\d+(?:\.\d+)?$/.test(modifier) && Number(modifier) >= 0 && Number(modifier) <= 100;
+}
+
 function validateLiteralFinding(
   finding: import("./types.js").AnalysisFinding,
   tokenIndex: NormalizedTokenIndex,
@@ -124,7 +124,8 @@ function validateLiteralFinding(
   }
 
   const normalizedValue = finding.normalizedValue || normalizeValueForCategory(category, finding.rawValue) || finding.rawValue.trim();
-  if (finding.origin === "css" && category !== "colors" && isNativeCssValue(category, normalizedValue)) {
+  const acceptsNativeValue = finding.origin === "css" || finding.origin === "tailwind" && category === "fontSizes";
+  if (acceptsNativeValue && category !== "colors" && isNativeCssValue(category, normalizedValue)) {
     return { finding, severity: "valid", message: `Uses native shadcn/Tailwind ${formatCategoryLabel(category)} value` };
   }
   let matchedTokens = semanticMatchesByValue(tokenIndex, category, normalizedValue);

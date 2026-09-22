@@ -95,6 +95,8 @@ export function inspectClasses(node: any, filePath: string, source: string, sour
       if (prefix === "bg" && /^(?:clip-|origin-|blend-)/.test(rawValue)) continue;
       if (!arbitrary && prefix === "shadow" && isNativeShadow(rawValue)) continue;
       const category = prefix === "shadow" && !arbitrary ? "colors" : classCategory(prefix, rawValue);
+      if (arbitrary && category === "colors" && isTokenBackedColorMix(rawValue)) continue;
+      if (arbitrary && category === "radius" && isTokenBackedRadiusExpression(rawValue)) continue;
       if (!arbitrary) {
         if (category === "spacing" || category === "radius" || (category === "fontSizes" && isNativeFontSize(rawValue))) continue;
         if (isStructuralColorUtility(prefix, rawValue)) continue;
@@ -114,4 +116,24 @@ export function inspectClasses(node: any, filePath: string, source: string, sour
         confidence: "high", line, column: position - before.lastIndexOf("\n"), context: source.split(/\r?\n/)[line - 1]?.trim() ?? "" });
     }
   }
+}
+
+function isTokenBackedColorMix(value: string): boolean {
+  if (!/^color-mix\(/i.test(value)) return false;
+  const variables = [...value.matchAll(/var\(\s*(--[\w-]+)(?:\s*,[^)]*)?\)/g)];
+  if (variables.length < 2) return false;
+  const remainder = value
+    .replace(/var\(\s*--[\w-]+(?:\s*,[^)]*)?\)/g, "")
+    .replace(/^color-mix\(\s*in\s+[\w-]+(?:\s+(?:shorter|longer|increasing|decreasing)\s+hue)?\s*,/i, "")
+    .replace(/[\s,\d.%)]/g, "");
+  return remainder === "";
+}
+
+function isTokenBackedRadiusExpression(value: string): boolean {
+  if (!/^(?:calc|min|max|clamp)\(/i.test(value) || !/var\(\s*--radius(?:-|\))/i.test(value)) return false;
+  const remainder = value
+    .replace(/var\(\s*--radius[\w-]*(?:\s*,[^)]*)?\)/gi, "")
+    .replace(/(?:calc|min|max|clamp)\(/gi, "")
+    .replace(/[\s,()+*/\-\d.%a-z]/gi, "");
+  return remainder === "";
 }
