@@ -10,7 +10,7 @@ export type ConfidenceLevel = "high" | "medium" | "low";
 export interface CliConfig {
   preset?: "shadcn";
   figmaPath: string;
-  srcPath: string;
+  srcPaths: string[];
   exclude?: string[];
 }
 

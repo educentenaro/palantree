@@ -50,6 +50,18 @@ test("explicit config paths resolve from config directory, CLI paths from cwd", 
   assert.equal(f.run("scan", "-c", "settings/lint.json", "-s", "src").status, 1);
 });
 
+test("config accepts multiple source roots and scans all of them", async (t) => {
+  const f = await fixture(t);
+  await mkdir(join(f.root, "app"));
+  await mkdir(join(f.root, "components"));
+  await writeFile(join(f.root, "app", "page.tsx"), "export default function Page() { return <main />; }");
+  await writeFile(join(f.root, "components", "Card.jsx"), "export const Card = () => <section />;");
+  await f.config({ src: ["app", "components"], format: "json" });
+  const result = f.run("scan");
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).files.length, 2);
+});
+
 test("invalid arguments and configuration exit 2 without report", async (t) => {
   const f = await fixture(t);
   for (const args of [["scna"], ["scan", "--unknown"], ["scan", "--src"], ["scan", "--src="], ["scan", "--format=xml"], ["scan", "-c", "missing.json"]]) {
@@ -58,7 +70,7 @@ test("invalid arguments and configuration exit 2 without report", async (t) => {
     assert.match(result.stderr, /palantree:/);
     assert.equal(result.stdout, "");
   }
-  for (const config of [null, [], { typo: true }, { src: 1 }, { exclude: ["**/*.tsx"] }, { failOnWarnings: "yes" }, { preset: "react" }]) {
+  for (const config of [null, [], { typo: true }, { src: 1 }, { src: [] }, { src: ["src", ""] }, { exclude: ["**/*.tsx"] }, { failOnWarnings: "yes" }, { preset: "react" }]) {
     await f.config(config);
     assert.equal(f.run("scan").status, 2, JSON.stringify(config));
   }

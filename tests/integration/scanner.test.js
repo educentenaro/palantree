@@ -17,6 +17,19 @@ test("scanner excludes whole directories without excluding siblings with the sam
   assert.deepEqual(await collectSourceFiles(root, [join(root, "generated")]), [join(root, "generated-other", "App.tsx")]);
 });
 
+test("scanner combines multiple roots without returning overlapping files twice", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "palantree-multiple-roots-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, "app"));
+  await mkdir(join(root, "components"));
+  await writeFile(join(root, "app", "page.tsx"), "export default null;");
+  await writeFile(join(root, "components", "button.tsx"), "export const Button = null;");
+  assert.deepEqual(await collectSourceFiles([root, join(root, "app"), join(root, "missing")]), [
+    join(root, "app", "page.tsx"),
+    join(root, "components", "button.tsx"),
+  ]);
+});
+
 test("CSS parser retains declarations and reports malformed CSS", async () => {
   const findings = await analyzeSourceFile("styles.css", ".button { padding: 12px; color: #13544A; }");
   assert.equal(findings.length, 2);

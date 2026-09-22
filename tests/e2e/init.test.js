@@ -57,6 +57,33 @@ test("init discovers a nested .tokens.json file", async (t) => {
   assert.equal(config.figma, "./src/Default.tokens.json");
 });
 
+test("init discovers app and components in shadcn projects without src", async (t) => {
+  const f = await fixture(t);
+  await rm(join(f.root, "src"), { recursive: true });
+  await mkdir(join(f.root, "app"));
+  await mkdir(join(f.root, "components"));
+  await writeFile(join(f.root, "app", "page.tsx"), "export default function Page() { return null; }");
+  await writeFile(join(f.root, "components", "button.tsx"), "export const Button = () => null;");
+  const result = f.run("init", "--yes");
+  assert.equal(result.status, 0, result.stderr);
+  const config = JSON.parse(await readFile(join(f.root, "design-lint.config.json"), "utf8"));
+  assert.deepEqual(config.src, ["./app", "./components"]);
+  assert.doesNotMatch(result.stderr, /Source path not found/);
+});
+
+test("init safely discovers non-standard source directories", async (t) => {
+  const f = await fixture(t);
+  await rm(join(f.root, "src"), { recursive: true });
+  await mkdir(join(f.root, "features"));
+  await mkdir(join(f.root, "tests"));
+  await writeFile(join(f.root, "features", "home.jsx"), "export const Home = () => null;");
+  await writeFile(join(f.root, "tests", "home.test.js"), "throw new Error('must not be scanned');");
+  const result = f.run("init", "--yes");
+  assert.equal(result.status, 0, result.stderr);
+  const config = JSON.parse(await readFile(join(f.root, "design-lint.config.json"), "utf8"));
+  assert.equal(config.src, "./features");
+});
+
 test("init requires package.json and rejects scan-only options", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "palantree-init-missing-"));
   t.after(() => rm(root, { recursive: true, force: true }));

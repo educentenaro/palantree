@@ -25,7 +25,7 @@ O `init` cria `design-lint.config.json` e adiciona este script ao `package.json`
 }
 ```
 
-Ele usa `./src` como fonte e procura, nesta ordem, `tokens.json`, os diretórios `tokens` ou `design-tokens` e arquivos `*.tokens.json` dentro do projeto. Para informar caminhos manualmente:
+Ele detecta automaticamente as raízes de código comuns em projetos shadcn/ui, incluindo `./src`, `./app`, `./pages`, `./components`, `./routes`, `./client`, `./web`, `./ui`, `./lib` e `./hooks`. Quando nenhuma delas existe, procura pastas de código não convencionais sem incluir testes, scripts ou arquivos públicos. Também procura, nesta ordem, `tokens.json`, os diretórios `tokens` ou `design-tokens` e arquivos `*.tokens.json` dentro do projeto. Para informar um caminho manualmente:
 
 ```sh
 npx palantree init --figma ./design-tokens/tokens.json --src ./app
@@ -49,7 +49,7 @@ npx palantree scan
 
 ## Configuração
 
-O arquivo gerado pelo `init` tem este formato:
+Em um projeto com uma única raiz, o arquivo gerado pelo `init` tem este formato:
 
 ```json
 {
@@ -62,7 +62,20 @@ O arquivo gerado pelo `init` tem este formato:
 }
 ```
 
-`figma` aceita um arquivo JSON ou um diretório percorrido recursivamente. Caminhos da configuração são relativos à pasta do arquivo; caminhos informados na CLI são relativos ao diretório de execução. `exclude` aceita caminhos exatos de arquivos ou diretórios, não globs.
+Projetos sem `src`, como layouts Next.js com App Router e componentes na raiz, recebem múltiplas fontes:
+
+```json
+{
+  "preset": "shadcn",
+  "figma": "./tokens.json",
+  "src": ["./app", "./components", "./lib", "./hooks"],
+  "exclude": [],
+  "format": "text",
+  "failOnWarnings": true
+}
+```
+
+`figma` aceita um arquivo JSON ou um diretório percorrido recursivamente. `src` aceita um caminho ou uma lista de caminhos; arquivos encontrados em raízes sobrepostas são analisados uma única vez. Caminhos da configuração são relativos à pasta do arquivo; caminhos informados na CLI são relativos ao diretório de execução. `exclude` aceita caminhos exatos de arquivos ou diretórios, não globs.
 
 Os argumentos de `scan` substituem as opções correspondentes:
 
@@ -74,7 +87,7 @@ npx palantree scan --fail-on-warnings
 npx palantree --help
 ```
 
-Sem configuração, `scan` assume o preset `shadcn` e procura `tokens.json` e `src` no diretório atual. Configurações criadas por versões anteriores, sem `preset`, também assumem shadcn. A descoberta de `*.tokens.json` acontece durante `palantree init`; o `scan` usa exatamente o caminho salvo. O arquivo de configuração é procurado apenas no diretório atual, sem busca nas pastas pais.
+Sem configuração, `scan` assume o preset `shadcn` e procura `tokens.json` e `src` no diretório atual; execute `init` para detectar outros layouts. Configurações anteriores com `src` como string continuam compatíveis, e configurações sem `preset` também assumem shadcn. As descobertas de fontes e de `*.tokens.json` acontecem durante `palantree init`; o `scan` usa exatamente os caminhos salvos. O arquivo de configuração é procurado apenas no diretório atual, sem busca nas pastas pais.
 
 ## Tokens e resultado
 
@@ -163,7 +176,7 @@ npm pack
 O artefato local usa o formato `palantree-<versão>.tgz`. Ele pode ser validado antes da publicação com:
 
 ```sh
-npm install --save-dev ./palantree-0.3.0.tgz
+npm install --save-dev ./palantree-0.3.1.tgz
 npx palantree init --yes
 npx palantree scan
 ```
@@ -172,7 +185,7 @@ Para publicar a versão validada:
 
 ```sh
 npm login
-npm publish ./palantree-0.3.0.tgz --access public
+npm publish ./palantree-0.3.1.tgz --access public
 ```
 
 O pacote está marcado como `UNLICENSED`: a publicação permite o download pelo npm, mas não concede uma licença aberta de redistribuição ou modificação.

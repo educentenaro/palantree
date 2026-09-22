@@ -33,7 +33,8 @@ try {
   assert.deepEqual(pkg.bin, { palantree: "dist/cli.js" });
   assert.match(await readFile(join(installed, "dist", "cli.js"), "utf8"), /^#!\/usr\/bin\/env node/);
   const project = join(root, "react project");
-  await mkdir(join(project, "src"), { recursive: true });
+  await mkdir(join(project, "app"), { recursive: true });
+  await mkdir(join(project, "components"), { recursive: true });
   await writeFile(join(project, "package.json"), JSON.stringify({ private: true, dependencies: { react: "^19.0.0" } }));
   await writeFile(join(project, "tokens.json"), JSON.stringify({ spacing: { md: { $type: "dimension", $value: "12px" } } }));
   const binDir = process.platform === "win32" ? prefix : join(prefix, "bin");
@@ -47,8 +48,9 @@ try {
   const config = JSON.parse(await readFile(join(project, "design-lint.config.json"), "utf8"));
   assert.equal(config.preset, "shadcn");
   assert.equal(config.failOnWarnings, true);
+  assert.deepEqual(config.src, ["./app", "./components"]);
   assert.equal(JSON.parse(await readFile(join(project, "package.json"), "utf8")).scripts["lint:design"], "palantree scan --fail-on-warnings");
-  const app = join(project, "src", "App.tsx");
+  const app = join(project, "app", "page.tsx");
   await writeFile(app, 'export const App = () => <div style={{ padding: "12px" }} />;');
   const invoke = () => process.platform === "win32"
     ? run(process.env.ComSpec || "cmd.exe", ["/d", "/c", "palantree scan --format json"], { cwd: project, env })
@@ -58,13 +60,13 @@ try {
   assert.equal(JSON.parse(failed.stdout).summary.error, 1);
   await writeFile(join(project, "tokens.json"), JSON.stringify({ Tokens: { Default: { background: { "bg-primary": { $type: "color", $value: "#FB640F" } }, border: { "border-primary": { $type: "color", $value: "#FB640F" } } } } }));
   await writeFile(app, 'export const App = () => <div className="bg-[#FB640F]" />;');
-  await writeFile(join(project, "src", "styles.css"), '.button { border: 2px solid #FB640F; }');
+  await writeFile(join(project, "components", "styles.css"), '.button { border: 2px solid #FB640F; }');
   const tailwind = invoke();
   assert.equal(tailwind.status, 1, tailwind.stderr);
   const suggestions = JSON.parse(tailwind.stdout).results.map((result) => result.suggestion);
   assert.ok(suggestions.includes("bg-primary"));
   assert.ok(suggestions.some((suggestion) => suggestion.includes("border: 2px solid var(--tokens-default-border-border-primary)")));
-  await rm(join(project, "src", "styles.css"));
+  await rm(join(project, "components", "styles.css"));
   await writeFile(app, 'export const App = () => <div style={{ padding: tokens.spacing.md }} />;');
   const passed = success(invoke());
   assert.equal(JSON.parse(passed.stdout).summary.valid, 1);

@@ -13,23 +13,34 @@ const IGNORED_DIRECTORIES = new Set([
   "out",
 ]);
 
-export async function collectSourceFiles(rootPath: string, exclude: string[] = []): Promise<string[]> {
-  const resolvedPath = resolve(rootPath);
+export async function collectSourceFiles(rootPaths: string | string[], exclude: string[] = []): Promise<string[]> {
+  const roots = Array.isArray(rootPaths) ? rootPaths : [rootPaths];
   const excludedPaths = exclude.map((entry) => resolve(entry));
   const isExcluded = (path: string) => excludedPaths.some((entry) => {
     const rel = relative(entry, path);
     return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
   });
-  if (isExcluded(resolvedPath)) return [];
-  const stats = await stat(resolvedPath);
+  const files = new Set<string>();
+  for (const rootPath of roots) {
+    const resolvedPath = resolve(rootPath);
+    if (isExcluded(resolvedPath)) continue;
+    let stats;
+    try {
+      stats = await stat(resolvedPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw error;
+    }
 
-  if (stats.isFile()) {
-    return isSupportedSourceFile(resolvedPath) ? [resolvedPath] : [];
+    if (stats.isFile()) {
+      if (isSupportedSourceFile(resolvedPath)) files.add(resolvedPath);
+      continue;
+    }
+
+    for (const file of await walkDirectory(resolvedPath, isExcluded)) files.add(file);
   }
 
-  const files = await walkDirectory(resolvedPath, isExcluded);
-  files.sort((left, right) => left.localeCompare(right));
-  return files;
+  return [...files].sort((left, right) => left.localeCompare(right));
 }
 
 async function walkDirectory(directoryPath: string, isExcluded: (path: string) => boolean): Promise<string[]> {

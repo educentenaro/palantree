@@ -15,13 +15,13 @@ Usage:
 
 Init options:
   --figma, -f <path>       Tokens JSON file or directory (default: tokens.json)
-  --src, -s <path>         Source directory or file (default: src)
+  --src, -s <path>         Source directory or file (default: auto-detect)
   --force                  Replace conflicting config and lint:design script
   --yes, -y                Confirm this is a shadcn/ui project without prompting
 
 Scan options:
   --figma, -f <path>       Tokens JSON file or directory (default: tokens.json)
-  --src, -s <path>         Source directory or file (default: src)
+  --src, -s <path>         Override configured source roots with one path
   --config, -c <path>      JSON config (default: ./design-lint.config.json)
   --format <text|json>     Report format
   --fail-on-warnings       Fail on warnings as well as errors

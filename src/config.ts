@@ -5,7 +5,7 @@ import type { CliConfig } from "./types.js";
 export interface ProjectConfig {
   preset?: "shadcn";
   figma?: string;
-  src?: string;
+  src?: string | string[];
   exclude?: string[];
   format?: "text" | "json";
   failOnWarnings?: boolean;
@@ -26,10 +26,12 @@ export async function loadConfig(overrides: ProjectConfig, configPath?: string, 
   }
   const base = found ? dirname(path) : cwd;
   const merged = { ...saved, ...overrides };
+  const sourceBase = overrides.src !== undefined ? cwd : base;
+  const sources = Array.isArray(merged.src) ? merged.src : [merged.src ?? "src"];
   const config: CliConfig = {
     preset: "shadcn",
     figmaPath: resolve(overrides.figma !== undefined ? cwd : base, merged.figma ?? "tokens.json"),
-    srcPath: resolve(overrides.src !== undefined ? cwd : base, merged.src ?? "src"),
+    srcPaths: [...new Set(sources.map((source) => resolve(sourceBase, source)))],
     exclude: (merged.exclude ?? []).map((entry) => resolve(overrides.exclude !== undefined ? cwd : base, entry)),
   };
   return { ...config, basePath: base, format: merged.format ?? "text", failOnWarnings: merged.failOnWarnings ?? false };
@@ -41,8 +43,13 @@ function validateConfig(value: unknown): ProjectConfig {
   for (const key of Object.keys(config)) {
     if (!["preset", "figma", "src", "exclude", "format", "failOnWarnings"].includes(key)) throw new Error(`Unknown option "${key}"`);
   }
-  for (const key of ["figma", "src"]) {
-    if (key in config && (typeof config[key] !== "string" || !(config[key] as string).trim())) throw new Error(`"${key}" must be a non-empty path`);
+  if ("figma" in config && (typeof config.figma !== "string" || !config.figma.trim())) throw new Error('"figma" must be a non-empty path');
+  if ("src" in config) {
+    const sources = config.src;
+    const valid = typeof sources === "string"
+      ? Boolean(sources.trim())
+      : Array.isArray(sources) && sources.length > 0 && sources.every((source) => typeof source === "string" && source.trim());
+    if (!valid) throw new Error('"src" must be a non-empty path or a non-empty array of paths');
   }
   if ("exclude" in config && (!Array.isArray(config.exclude) || config.exclude.some((path) => typeof path !== "string" || !path.trim() || /[*?]/.test(path)))) {
     throw new Error('"exclude" must contain file or directory paths (globs are not supported)');

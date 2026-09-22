@@ -10,8 +10,8 @@ export async function scan(config: CliConfig) {
   const rawTokens = await loadRawTokens(config.figmaPath);
   const index = normalizeTokens(rawTokens);
   if (!index.tokens.length) throw new Error(`No supported tokens found in ${config.figmaPath}`);
-  const files = await collectSourceFiles(config.srcPath, config.exclude);
-  if (!files.length) throw new Error(`No supported source files found in ${config.srcPath}`);
+  const files = await collectSourceFiles(config.srcPaths, config.exclude);
+  if (!files.length) throw new Error(`No supported source files found in ${config.srcPaths.join(", ")}`);
   const findings: AnalysisFinding[] = [];
   // Bound memory and file handles even for large repositories.
   for (const file of files) {

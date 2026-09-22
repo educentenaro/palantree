@@ -1,5 +1,6 @@
-import { access, readFile, readdir, writeFile } from "node:fs/promises";
-import { join, relative, resolve, sep } from "node:path";
+import { access, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { extname, join, relative, resolve, sep } from "node:path";
+import { SUPPORTED_SOURCE_EXTENSIONS } from "./types.js";
 
 export interface InitOptions {
   figma?: string;
@@ -11,6 +12,8 @@ export interface InitOptions {
 const CONFIG_FILE = "design-lint.config.json";
 const LINT_SCRIPT = "palantree scan --fail-on-warnings";
 const IGNORED_DIRECTORIES = new Set(["node_modules", "dist", "build", "coverage", ".git", ".cache", "out"]);
+const SOURCE_DIRECTORIES = ["src", "app", "pages", "components", "routes", "client", "web", "ui", "lib", "hooks"];
+const NON_SOURCE_DIRECTORIES = new Set([...IGNORED_DIRECTORIES, "public", "static", "assets", "docs", "test", "tests", "__tests__", "scripts"]);
 
 export async function initProject(options: InitOptions, cwd = process.cwd()) {
   const packagePath = resolve(cwd, "package.json");
@@ -24,7 +27,7 @@ export async function initProject(options: InitOptions, cwd = process.cwd()) {
   }
   const scripts = packageJson.scripts === undefined ? {} : parseObjectValue(packageJson.scripts, '"scripts" in package.json must be an object');
   const figma = options.figma ?? await discoverTokenPath(cwd) ?? "./tokens.json";
-  const src = options.src ?? "./src";
+  const src = options.src ?? await discoverSourcePaths(cwd);
   const config = { preset: "shadcn", figma, src, exclude: [], format: "text", failOnWarnings: true };
   const configText = `${JSON.stringify(config, null, 2)}\n`;
 
@@ -49,7 +52,9 @@ export async function initProject(options: InitOptions, cwd = process.cwd()) {
 
   const warnings: string[] = [];
   if (!await exists(resolve(cwd, figma))) warnings.push(`Token path not found yet: ${figma}`);
-  if (!await exists(resolve(cwd, src))) warnings.push(`Source path not found yet: ${src}`);
+  for (const source of asPaths(src)) {
+    if (!await exists(resolve(cwd, source))) warnings.push(`Source path not found yet: ${source}`);
+  }
   return { configPath, packagePath, warnings };
 }
 
@@ -173,4 +178,54 @@ function commonDirectory(files: string[]) {
 function toConfigPath(cwd: string, path: string) {
   const value = relative(cwd, path).split(sep).join("/");
   return value === "" ? "." : value.startsWith(".") ? value : `./${value}`;
+}
+
+async function discoverSourcePaths(cwd: string): Promise<string | string[]> {
+  const conventional: string[] = [];
+  for (const directory of SOURCE_DIRECTORIES) {
+    const path = resolve(cwd, directory);
+    if (await isDirectory(path)) conventional.push(toConfigPath(cwd, path));
+  }
+  if (conventional.length) return conventional.length === 1 ? conventional[0] : conventional;
+
+  const discovered: string[] = [];
+  for (const entry of await readdir(cwd, { withFileTypes: true })) {
+    const path = join(cwd, entry.name);
+    if (entry.isDirectory()) {
+      if (!entry.name.startsWith(".") && !NON_SOURCE_DIRECTORIES.has(entry.name) && await containsSourceFile(path)) {
+        discovered.push(toConfigPath(cwd, path));
+      }
+    } else if (entry.isFile() && isSupportedSourceFile(entry.name)) {
+      discovered.push(toConfigPath(cwd, path));
+    }
+  }
+  discovered.sort((left, right) => left.localeCompare(right));
+  if (!discovered.length) return "./src";
+  return discovered.length === 1 ? discovered[0] : discovered;
+}
+
+async function containsSourceFile(directory: string): Promise<boolean> {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (entry.isFile() && isSupportedSourceFile(entry.name)) return true;
+    if (entry.isDirectory() && !entry.name.startsWith(".") && !NON_SOURCE_DIRECTORIES.has(entry.name)) {
+      if (await containsSourceFile(join(directory, entry.name))) return true;
+    }
+  }
+  return false;
+}
+
+function isSupportedSourceFile(path: string) {
+  return (SUPPORTED_SOURCE_EXTENSIONS as readonly string[]).includes(extname(path).toLowerCase());
+}
+
+async function isDirectory(path: string) {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function asPaths(value: string | string[]) {
+  return Array.isArray(value) ? value : [value];
 }
