@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -94,7 +94,10 @@ test("--src scans only the selected path and preserves config exclusions", async
     const result = f.run("scan", "--src", sourcePath);
     assert.equal(result.status, 1, `${sourcePath}: ${result.stderr}`);
     const report = JSON.parse(result.stdout);
-    assert.deepEqual(report.files, [selectedFile]);
+    assert.deepEqual(
+      await Promise.all(report.files.map((file) => realpath(file))),
+      [await realpath(selectedFile)],
+    );
     assert.equal(report.summary.error, 1);
   }
 });
