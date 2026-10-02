@@ -1,5 +1,5 @@
 import { extname, join, resolve, relative, isAbsolute, sep } from "node:path";
-import { readdir, stat } from "node:fs/promises";
+import { readdir, realpath, stat } from "node:fs/promises";
 import { SUPPORTED_SOURCE_EXTENSIONS, type SupportedSourceExtension } from "./types.js";
 
 const IGNORED_DIRECTORIES = new Set([
@@ -15,15 +15,19 @@ const IGNORED_DIRECTORIES = new Set([
 
 export async function collectSourceFiles(rootPaths: string | string[], exclude: string[] = []): Promise<string[]> {
   const roots = Array.isArray(rootPaths) ? rootPaths : [rootPaths];
-  const excludedPaths = exclude.map((entry) => resolve(entry));
-  const isExcluded = (path: string) => excludedPaths.some((entry) => {
-    const rel = relative(entry, path);
-    return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
-  });
+  const excludedPaths = await Promise.all(exclude.map(canonicalPath));
+  const isExcluded = async (path: string) => {
+    if (excludedPaths.length === 0) return false;
+    const canonical = await canonicalPath(path);
+    return excludedPaths.some((entry) => {
+      const rel = relative(entry, canonical);
+      return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+    });
+  };
   const files = new Set<string>();
   for (const rootPath of roots) {
     const resolvedPath = resolve(rootPath);
-    if (isExcluded(resolvedPath)) continue;
+    if (await isExcluded(resolvedPath)) continue;
     let stats;
     try {
       stats = await stat(resolvedPath);
@@ -43,12 +47,22 @@ export async function collectSourceFiles(rootPaths: string | string[], exclude: 
   return [...files].sort((left, right) => left.localeCompare(right));
 }
 
-async function walkDirectory(directoryPath: string, isExcluded: (path: string) => boolean): Promise<string[]> {
+async function canonicalPath(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch (error) {
+    // Missing exclusions and source roots retain their existing behavior.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return resolve(path);
+    throw error;
+  }
+}
+
+async function walkDirectory(directoryPath: string, isExcluded: (path: string) => Promise<boolean>): Promise<string[]> {
   const entries = await readdir(directoryPath, { withFileTypes: true });
   const files: string[] = [];
 
   for (const entry of entries) {
-    if (isExcluded(join(directoryPath, entry.name))) continue;
+    if (await isExcluded(join(directoryPath, entry.name))) continue;
     if (entry.isDirectory()) {
       if (IGNORED_DIRECTORIES.has(entry.name) || entry.name.startsWith(".")) {
         continue;

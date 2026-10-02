@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { collectSourceFiles } from "../../dist/file-scanner.js";
@@ -28,6 +28,26 @@ test("scanner combines multiple roots without returning overlapping files twice"
     join(root, "app", "page.tsx"),
     join(root, "components", "button.tsx"),
   ]);
+});
+
+test("scanner applies file and directory exclusions across directory aliases", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "palantree-alias-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const physical = join(root, "physical");
+  const alias = join(root, "alias");
+  await mkdir(join(physical, "generated"), { recursive: true });
+  await mkdir(join(physical, "generated-other"));
+  for (const file of ["Selected.tsx", "Excluded.tsx", "generated/App.tsx", "generated-other/App.tsx"]) {
+    await writeFile(join(physical, file), "export const x = 1;");
+  }
+  await symlink(physical, alias, process.platform === "win32" ? "junction" : "dir");
+  for (const [source, excluded] of [[alias, physical], [physical, alias]]) {
+    assert.deepEqual(await collectSourceFiles(source, [
+      join(excluded, "Excluded.tsx"), join(excluded, "generated"), join(excluded, "missing"),
+    ]), [join(source, "generated-other", "App.tsx"), join(source, "Selected.tsx")]);
+    assert.deepEqual(await collectSourceFiles(join(source, "Excluded.tsx"), [join(excluded, "Excluded.tsx")]), []);
+    assert.deepEqual(await collectSourceFiles(source, [excluded]), []);
+  }
 });
 
 test("CSS parser retains declarations and reports malformed CSS", async () => {
