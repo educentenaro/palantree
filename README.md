@@ -169,7 +169,7 @@ npm pack
 O artefato local usa o formato `palantree-<versão>.tgz`. A versão atual pode ser validada com:
 
 ```sh
-npm install --save-dev ./palantree-0.3.3.tgz
+npm install --save-dev ./palantree-0.3.4.tgz
 npx palantree init --yes
 npx palantree scan
 ```
