@@ -9,7 +9,7 @@ export interface InitOptions {
   shadcnConfirmed?: boolean;
 }
 
-const CONFIG_FILE = "design-lint.config.json";
+const CONFIG_FILE = "palantree.config.json";
 const LINT_SCRIPT = "palantree scan --fail-on-warnings";
 const IGNORED_DIRECTORIES = new Set(["node_modules", "dist", "build", "coverage", ".git", ".cache", "out"]);
 const SOURCE_DIRECTORIES = ["src", "app", "pages", "components", "routes", "client", "web", "ui", "lib", "hooks"];
@@ -18,14 +18,13 @@ const NON_SOURCE_DIRECTORIES = new Set([...IGNORED_DIRECTORIES, "public", "stati
 export async function initProject(options: InitOptions, cwd = process.cwd()) {
   const packagePath = resolve(cwd, "package.json");
   const configPath = resolve(cwd, CONFIG_FILE);
-  const packageText = await readRequiredFile(packagePath, "Run palantree init from a project containing package.json");
+  const packageText = await readRequiredFile(packagePath, "Run npx palantree init from a project containing package.json");
   const packageJson = parseObject(packageText, packagePath);
   const existingConfig = await readOptionalFile(configPath);
   const alreadyConfigured = existingConfig !== undefined && readPreset(existingConfig) === "shadcn";
   if (!options.shadcnConfirmed && !alreadyConfigured) {
-    throw new Error("Palantree is exclusive to shadcn/ui projects; confirm with palantree init --yes");
+    throw new Error("Palantree is exclusive to shadcn/ui projects; confirm with npx palantree init --yes");
   }
-  const scripts = packageJson.scripts === undefined ? {} : parseObjectValue(packageJson.scripts, '"scripts" in package.json must be an object');
   const figma = options.figma ?? await discoverTokenPath(cwd) ?? "./tokens.json";
   const src = options.src ?? await discoverSourcePaths(cwd);
   const config = { preset: "shadcn", figma, src, exclude: [], format: "text", failOnWarnings: true };
@@ -34,13 +33,8 @@ export async function initProject(options: InitOptions, cwd = process.cwd()) {
   if (existingConfig !== undefined && !options.force && !jsonEquals(existingConfig, configText) && !legacyConfigEquals(existingConfig, config)) {
     throw new Error(`${CONFIG_FILE} already exists with different settings; use --force to replace it`);
   }
-  const existingScript = scripts["lint:design"];
-  if (existingScript !== undefined && existingScript !== LINT_SCRIPT && !options.force) {
-    throw new Error('package.json already has a different "lint:design" script; use --force to replace it');
-  }
-
-  scripts["lint:design"] = LINT_SCRIPT;
-  packageJson.scripts = scripts;
+  const scripts = packageJson.scripts === undefined ? undefined : parseObjectValue(packageJson.scripts, '"scripts" in package.json must be an object');
+  if (scripts?.["lint:design"] === LINT_SCRIPT) delete scripts["lint:design"];
   const indent = detectIndent(packageText);
   const newline = packageText.includes("\r\n") ? "\r\n" : "\n";
   const nextPackageText = `${JSON.stringify(packageJson, null, indent)}\n`.replaceAll("\n", newline);
@@ -64,7 +58,7 @@ export async function isShadcnConfigured(cwd = process.cwd()): Promise<boolean> 
 }
 
 export async function ensureInitProject(cwd = process.cwd()): Promise<void> {
-  await readRequiredFile(resolve(cwd, "package.json"), "Run palantree init from a project containing package.json");
+  await readRequiredFile(resolve(cwd, "package.json"), "Run npx palantree init from a project containing package.json");
 }
 
 export function acceptsShadcnAnswer(answer: string): boolean {

@@ -10,19 +10,19 @@ import { formatReport } from "./reporter.js";
 const usage = `palantree — React design token linting
 
 Usage:
-  palantree init [options]
-  palantree scan [options]
+  npx palantree init [options]
+  npx palantree scan [options]
 
 Init options:
   --figma, -f <path>       Tokens JSON file or directory (default: tokens.json)
   --src, -s <path>         Source directory or file (default: auto-detect)
-  --force                  Replace conflicting config and lint:design script
+  --force                  Replace a conflicting config file
   --yes, -y                Confirm this is a shadcn/ui project without prompting
 
 Scan options:
   --figma, -f <path>       Tokens JSON file or directory (default: tokens.json)
   --src, -s <path>         Override configured source roots with one path
-  --config, -c <path>      JSON config (default: ./design-lint.config.json)
+  --config, -c <path>      JSON config (default: ./palantree.config.json)
   --format <text|json>     Report format
   --fail-on-warnings       Fail on warnings as well as errors
 
@@ -56,7 +56,7 @@ async function main() {
       return;
     }
     if (positionals.length !== 1 || !["init", "scan"].includes(positionals[0])) {
-      throw new Error(`Unknown command: ${positionals.join(" ") || "(missing)"}. Use "palantree init" or "palantree scan".`);
+      throw new Error(`Unknown command: ${positionals.join(" ") || "(missing)"}. Use "npx palantree init" or "npx palantree scan".`);
     }
     for (const key of ["figma", "src", "config"] as const) {
       if (values[key] !== undefined && !values[key]!.trim()) throw new Error(`--${key} requires a non-empty path`);
@@ -71,7 +71,7 @@ async function main() {
       let confirmed = configured || values.yes === true;
       if (!confirmed) {
         if (!process.stdin.isTTY || !process.stdout.isTTY) {
-          throw new Error("Cannot confirm shadcn/ui in a non-interactive terminal; rerun palantree init --yes");
+          throw new Error("Cannot confirm shadcn/ui in a non-interactive terminal; rerun npx palantree init --yes");
         }
         const prompt = createInterface({ input: process.stdin, output: process.stdout });
         const answer = (await prompt.question("Este projeto utiliza shadcn/ui? (Y/n) ")).trim().toLowerCase();
@@ -81,9 +81,9 @@ async function main() {
       }
       const result = await initProject({ figma: values.figma, src: values.src, force: values.force, shadcnConfirmed: confirmed });
       console.log("Palantree initialized.");
-      console.log("Created design-lint.config.json and added the lint:design script.");
+      console.log("Created palantree.config.json.");
       for (const warning of result.warnings) console.warn(`Warning: ${warning}`);
-      console.log("Run: npm run lint:design");
+      console.log("Run: npx palantree scan");
       return;
     }
 

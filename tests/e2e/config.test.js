@@ -16,11 +16,11 @@ async function fixture(t) {
   return {
     root,
     run: (...args) => spawnSync(process.execPath, [cli, ...args], { cwd: root, encoding: "utf8" }),
-    config: (value) => writeFile(join(root, "design-lint.config.json"), JSON.stringify(value)),
+    config: (value) => writeFile(join(root, "palantree.config.json"), JSON.stringify(value)),
   };
 }
 
-test("scan defaults and JSON report", async (t) => {
+test("scan defaults, JSON report and direct flags", async (t) => {
   const f = await fixture(t);
   const result = f.run("scan", "--format=json");
   assert.equal(result.status, 1, result.stderr);
@@ -62,6 +62,43 @@ test("config accepts multiple source roots and scans all of them", async (t) => 
   assert.equal(JSON.parse(result.stdout).files.length, 2);
 });
 
+test("only palantree.config.json is loaded automatically", async (t) => {
+  const f = await fixture(t);
+  const oldConfig = join(f.root, "design-lint.config.json");
+  await writeFile(oldConfig, JSON.stringify({ format: "json" }));
+
+  const defaultResult = f.run("scan");
+  assert.equal(defaultResult.status, 1, defaultResult.stderr);
+  assert.match(defaultResult.stdout, /Result: failed/);
+
+  const explicitResult = f.run("scan", "--config", oldConfig);
+  assert.equal(explicitResult.status, 1, explicitResult.stderr);
+  assert.equal(JSON.parse(explicitResult.stdout).summary.error, 1);
+});
+
+test("--src scans only the selected path and preserves config exclusions", async (t) => {
+  const f = await fixture(t);
+  const appDir = join(f.root, "app folder");
+  const siblingDir = join(f.root, "sibling");
+  const selectedFile = join(appDir, "Selected.tsx");
+  const excludedFile = join(appDir, "Excluded.tsx");
+  await mkdir(appDir);
+  await mkdir(siblingDir);
+  await writeFile(selectedFile, 'export const Selected = () => <div style={{ padding: "12px" }} />;');
+  await writeFile(excludedFile, 'export const Excluded = () => <div style={{ padding: "12px" }} />;');
+  await writeFile(join(f.root, "src", "App.tsx"), "export const = <");
+  await writeFile(join(siblingDir, "Broken.tsx"), "export const = <");
+  await f.config({ src: ".", exclude: ["app folder/Excluded.tsx"], format: "json" });
+
+  for (const sourcePath of ["app folder", appDir, selectedFile]) {
+    const result = f.run("scan", "--src", sourcePath);
+    assert.equal(result.status, 1, `${sourcePath}: ${result.stderr}`);
+    const report = JSON.parse(result.stdout);
+    assert.deepEqual(report.files, [selectedFile]);
+    assert.equal(report.summary.error, 1);
+  }
+});
+
 test("invalid arguments and configuration exit 2 without report", async (t) => {
   const f = await fixture(t);
   for (const args of [["scna"], ["scan", "--unknown"], ["scan", "--src"], ["scan", "--src="], ["scan", "--format=xml"], ["scan", "-c", "missing.json"]]) {
@@ -80,12 +117,13 @@ test("scan requires the explicit command", async (t) => {
   const f = await fixture(t);
   const result = f.run("-f", "tokens.json", "-s", "src");
   assert.equal(result.status, 2);
-  assert.match(result.stderr, /Use "palantree init" or "palantree scan"/);
+  assert.match(result.stderr, /Use "npx palantree init" or "npx palantree scan"/);
 });
 
 test("missing tokens, malformed tokens, empty sources and invalid TSX fail clearly", async (t) => {
   const f = await fixture(t);
   assert.equal(f.run("scan", "--figma=missing.json").status, 2);
+  assert.equal(f.run("scan", "--src=missing").status, 2);
   await writeFile(join(f.root, "src", "App.tsx"), "export const = <");
   const syntax = f.run("scan");
   assert.equal(syntax.status, 2);
@@ -107,6 +145,9 @@ test("warnings can fail CI and help/version need no project", async (t) => {
   assert.equal(f.run("scan", "--fail-on-warnings").status, 1);
   await f.config({ failOnWarnings: true });
   assert.match(f.run("scan").stdout, /Result: failed/);
-  assert.equal(f.run("--help").status, 0);
+  const help = f.run("--help");
+  assert.equal(help.status, 0);
+  assert.match(help.stdout, /npx palantree scan/);
+  assert.doesNotMatch(help.stdout, /design-lint/);
   assert.match(f.run("--version").stdout, /^\d+\.\d+\.\d+/);
 });

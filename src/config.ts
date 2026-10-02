@@ -12,7 +12,7 @@ export interface ProjectConfig {
 }
 
 export async function loadConfig(overrides: ProjectConfig, configPath?: string, cwd = process.cwd()) {
-  const path = resolve(cwd, configPath ?? "design-lint.config.json");
+  const path = resolve(cwd, configPath ?? "palantree.config.json");
   let saved: ProjectConfig = {};
   let found = false;
   try {

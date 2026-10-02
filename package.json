@@ -1,10 +1,18 @@
 {
   "name": "palantree",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "shadcn/ui design token linting for React, JavaScript, TypeScript and CSS",
   "license": "UNLICENSED",
   "keywords": ["react", "design-system", "design-tokens", "lint", "figma"],
   "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/educentenaro/palantree.git"
+  },
+  "homepage": "https://github.com/educentenaro/palantree#readme",
+  "bugs": {
+    "url": "https://github.com/educentenaro/palantree/issues"
+  },
   "engines": { "node": ">=22" },
   "files": ["dist"],
   "type": "module",
@@ -12,7 +20,6 @@
     "palantree": "dist/cli.js"
   },
   "scripts": {
-    "start": "node ./dist/cli.js",
     "test": "npm run build && node --test tests/unit/*.test.js tests/integration/*.test.js tests/e2e/*.test.js",
     "test:package": "node scripts/test-package.mjs",
     "check": "tsc --noEmit",

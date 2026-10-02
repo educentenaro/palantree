@@ -8,71 +8,77 @@ import { spawnSync } from "node:child_process";
 const repo = fileURLToPath(new URL("..", import.meta.url));
 const npm = process.env.npm_execpath;
 assert.ok(npm, "Run with npm run test:package");
+const npx = join(dirname(npm), "npx-cli.js");
 const root = await mkdtemp(join(tmpdir(), "palantree-package-"));
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { encoding: "utf8", ...options });
   if (result.error) throw result.error;
   return result;
 }
+
 function success(result) {
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   return result;
 }
+
 try {
   success(run(process.execPath, [npm, "pack", "--pack-destination", root], { cwd: repo }));
   const archive = (await readdir(root)).find((name) => name.endsWith(".tgz"));
   assert.ok(archive);
-  const prefix = join(root, "global");
-  success(run(process.execPath, [npm, "install", "--global", "--prefix", prefix, "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund", join(root, archive)], { cwd: root }));
-  const installed = process.platform === "win32" ? join(prefix, "node_modules", "palantree") : join(prefix, "lib", "node_modules", "palantree");
+
+  const project = join(root, "react project");
+  await mkdir(join(project, "app"), { recursive: true });
+  await mkdir(join(project, "components"), { recursive: true });
+  await writeFile(join(project, "package.json"), JSON.stringify({ private: true, scripts: { test: "node --test" } }));
+  success(run(process.execPath, [npm, "install", "--ignore-scripts", "--no-audit", "--no-fund", join(root, archive)], { cwd: project }));
+
+  const installed = join(project, "node_modules", "palantree");
   const entries = await readdir(installed);
   assert.ok(entries.includes("dist"));
   assert.ok(entries.every((entry) => ["dist", "package.json", "README.md", "LICENSE", "node_modules"].includes(entry)));
   await assert.rejects(access(join(installed, "node_modules", "typescript")), { code: "ENOENT" });
   const pkg = JSON.parse(await readFile(join(installed, "package.json"), "utf8"));
+  assert.equal(pkg.name, "palantree");
   assert.deepEqual(pkg.bin, { palantree: "dist/cli.js" });
+  assert.equal(pkg.scripts.start, undefined);
   assert.match(await readFile(join(installed, "dist", "cli.js"), "utf8"), /^#!\/usr\/bin\/env node/);
-  const project = join(root, "react project");
-  await mkdir(join(project, "app"), { recursive: true });
-  await mkdir(join(project, "components"), { recursive: true });
-  await writeFile(join(project, "package.json"), JSON.stringify({ private: true, dependencies: { react: "^19.0.0" } }));
+
   await writeFile(join(project, "tokens.json"), JSON.stringify({ spacing: { md: { $type: "dimension", $value: "12px" } } }));
-  const binDir = process.platform === "win32" ? prefix : join(prefix, "bin");
-  // Only the installed command, Node and OS tools: no Bun or repository tools.
-  const env = { ...process.env, PATH: [binDir, dirname(process.execPath), process.platform === "win32" ? join(process.env.SystemRoot, "System32") : "/usr/bin:/bin"].join(delimiter) };
+  const env = { ...process.env, PATH: [dirname(process.execPath), process.platform === "win32" ? join(process.env.SystemRoot, "System32") : "/usr/bin:/bin"].join(delimiter) };
   delete env.NODE_PATH;
-  const init = process.platform === "win32"
-    ? run(process.env.ComSpec || "cmd.exe", ["/d", "/c", "palantree init --yes"], { cwd: project, env })
-    : run("palantree", ["init", "--yes"], { cwd: project, env });
-  success(init);
-  const config = JSON.parse(await readFile(join(project, "design-lint.config.json"), "utf8"));
+  const invoke = (...args) => run(process.execPath, [npx, "--no-install", "palantree", ...args], { cwd: project, env });
+
+  success(invoke("init", "--yes"));
+  const config = JSON.parse(await readFile(join(project, "palantree.config.json"), "utf8"));
   assert.equal(config.preset, "shadcn");
   assert.equal(config.failOnWarnings, true);
   assert.deepEqual(config.src, ["./app", "./components"]);
-  assert.equal(JSON.parse(await readFile(join(project, "package.json"), "utf8")).scripts["lint:design"], "palantree scan --fail-on-warnings");
+  const projectPackage = JSON.parse(await readFile(join(project, "package.json"), "utf8"));
+  assert.equal(projectPackage.scripts.test, "node --test");
+  assert.equal(projectPackage.scripts["lint:design"], undefined);
+
   const app = join(project, "app", "page.tsx");
   await writeFile(app, 'export const App = () => <div style={{ padding: "12px" }} />;');
-  const invoke = () => process.platform === "win32"
-    ? run(process.env.ComSpec || "cmd.exe", ["/d", "/c", "palantree scan --format json"], { cwd: project, env })
-    : run("palantree", ["scan", "--format", "json"], { cwd: project, env });
-  const failed = invoke();
+  const failed = invoke("scan", "--format", "json");
   assert.equal(failed.status, 1, failed.stderr);
   assert.equal(JSON.parse(failed.stdout).summary.error, 1);
+
   await writeFile(join(project, "tokens.json"), JSON.stringify({ Tokens: { Default: { background: { "bg-primary": { $type: "color", $value: "#FB640F" } }, border: { "border-primary": { $type: "color", $value: "#FB640F" } } } } }));
   await writeFile(app, 'export const App = () => <div className="bg-[#FB640F]" />;');
   await writeFile(join(project, "components", "styles.css"), '.button { border: 2px solid #FB640F; }');
-  const tailwind = invoke();
+  const tailwind = invoke("scan", "--format", "json");
   assert.equal(tailwind.status, 1, tailwind.stderr);
   const suggestions = JSON.parse(tailwind.stdout).results.map((result) => result.suggestion);
   assert.ok(suggestions.includes("bg-primary"));
   assert.ok(suggestions.some((suggestion) => suggestion.includes("border: 2px solid var(--tokens-default-border-border-primary)")));
+
   await rm(join(project, "components", "styles.css"));
   await writeFile(app, 'export const App = () => <div style={{ padding: tokens.spacing.md }} />;');
-  const passed = success(invoke());
+  const passed = success(invoke("scan", "--format", "json"));
   assert.equal(JSON.parse(passed.stdout).summary.valid, 1);
-  console.log("Package verified: npm pack, isolated global install, init, and external React project scans without Bun.");
+  console.log("Package verified: npm pack, isolated local install, init and scan through npx --no-install palantree.");
 } finally {
-  // Only remove the exact temporary directory allocated above.
   assert.equal(dirname(resolve(root)), resolve(tmpdir()));
   await rm(root, { recursive: true, force: true });
 }
